@@ -90,16 +90,9 @@ export async function calculateBatchCommission(
             temp = parent;
         }
 
-        // lineage는 직속상위 -> ... -> 대마스터 순서
-        const rootMaster = lineage.length > 0 ? lineage[lineage.length - 1] : leafUser;
 
-        // 공제액 계산 (최상위 마스터 기준 총 롤링 수수료)
-        // Deduction = Root's Total Rolling Fee
-        const deductionCasino = rollingCasino * (rootMaster.casinoRate / 100);
-        const deductionSlot = rollingSlot * (rootMaster.slotRate / 100);
-        const totalDeduction = deductionCasino + deductionSlot;
 
-        const netLosing = inputLosingAmt - totalDeduction;
+
 
         // === A. 상위 마스터들의 수익 계산 (롤링 수익) ===
         // lineage 순회 (직속 상위부터)
@@ -157,6 +150,17 @@ export async function calculateBatchCommission(
             }
 
             // 3. 루징 수익 (Losing Share)
+            // 공제액 계산: (상부 요율 - 하부 요율) 만큼만 공제
+            // Deduction = Rolling * (UpperRate - LeafRate)
+            const marginCasinoRate = Math.max(0, upper.casinoRate - leafUser.casinoRate);
+            const marginSlotRate = Math.max(0, upper.slotRate - leafUser.slotRate);
+
+            const deductionCasino = rollingCasino * (marginCasinoRate / 100);
+            const deductionSlot = rollingSlot * (marginSlotRate / 100);
+            const totalDeduction = deductionCasino + deductionSlot;
+
+            const netLosing = inputLosingAmt - totalDeduction;
+
             const rateDiffLosing = upper.losingRate - prevLosingRate;
             if (rateDiffLosing > 0) {
                 const profitLosing = netLosing * (rateDiffLosing / 100);
@@ -169,7 +173,9 @@ export async function calculateBatchCommission(
                         source: 'losing',
                         amount: profitLosing,
                         breakdown: `[입력] 루징금액: ${inputLosingAmt.toLocaleString()}\n` +
-                            `[공제] 상부 롤링수수료 합계: ${totalDeduction.toLocaleString()} (C:${deductionCasino.toLocaleString()} + S:${deductionSlot.toLocaleString()})\n` +
+                            `[공제] 롤링 마진 합계: ${totalDeduction.toLocaleString()} (C:${deductionCasino.toLocaleString()} + S:${deductionSlot.toLocaleString()})\n` +
+                            ` - 카지노 마진: ${marginCasinoRate.toFixed(2)}% (${upper.casinoRate}% - ${leafUser.casinoRate}%)\n` +
+                            ` - 슬롯 마진: ${marginSlotRate.toFixed(2)}% (${upper.slotRate}% - ${leafUser.slotRate}%)\n` +
                             `[순수루징] ${netLosing.toLocaleString()}\n` +
                             `[수익] ${netLosing.toLocaleString()} × (본인${upper.losingRate}% - 하부${prevLosingRate}%) = ${profitLosing.toLocaleString()}`
                     });
