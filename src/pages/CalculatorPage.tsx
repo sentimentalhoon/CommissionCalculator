@@ -1,36 +1,15 @@
-/**
- * CalculatorPage.tsx - 정산 계산기 페이지 (Settlement Calculator Page)
- * 
- * 이 페이지는 수수료 정산의 핵심 기능을 담당합니다.
- * This page handles the core functionality of commission settlement.
- * 
- * 주요 기능 (Main Features):
- * 1. 대마스터 선택 (Select Grand Master)
- * 2. 회원별 입력 (카지노/슬롯/루징) (Input per member: Casino/Slot/Losing)
- * 3. 자동 합산 (하위→상위) (Auto-sum from lower to upper)
- * 4. 수수료 계산 (본인 + 차등) (Commission calculation: Own + Differential)
- * 5. 결과 테이블 표시 (Display results table)
- * 6. PDF 다운로드 (PDF download)
- * 7. 기록 저장 (Save to history)
- * 
- * 입력 흐름 (Input Flow):
- * 부본사 입력 → 본사에 자동 합산 → 마스터에 자동 합산 → 대마스터에 자동 합산
- * 
- * 계산 흐름 (Calculation Flow):
- * calculator.ts의 calculateBatchCommission 함수 호출
- */
 
-// ===== React 훅들 (React Hooks) =====
-import { useState, useMemo, useEffect } from 'react';
-
-// ===== Firebase Firestore =====
+import React, { useState, useEffect, useMemo } from 'react';
+import { useAuth } from '../contexts/AuthContext';
+import { db, type User, type CalculationResult } from '../db';
+import { calculateBatchCommission, type BatchInput } from '../services/calculator';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db as firestoreDb } from '../firebase';
-import { collection, onSnapshot, query, addDoc, doc, getDoc } from 'firebase/firestore';
+import { useSearchParams } from 'react-router-dom';
 
-// ===== 타입 정의 (Type definitions) =====
-import type { User, CalculationResult } from '../db';
-import { calculateBatchCommission } from '../services/calculator';
-import type { BatchInput } from '../services/calculator';
+// ===== 유틸리티 (Utilities) =====
+import { clsx } from 'clsx';
+import { format } from 'date-fns';
 
 // ===== 아이콘 (Icons) =====
 import { Calculator as CalcIcon, DollarSign, Check, Download, ChevronDown, ChevronRight, RotateCcw } from 'lucide-react';
@@ -39,562 +18,573 @@ import { Calculator as CalcIcon, DollarSign, Check, Download, ChevronDown, Chevr
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 
-// ===== 기타 (Others) =====
-import clsx from 'clsx';
-import { useNavigate, useSearchParams } from 'react-router-dom';
-import { LEVELS } from '../constants/levels';
+// ===== 레벨 상수 (Level Constants) =====
+const LEVELS = ['대마스터', '마스터', '부본사', '총판', '매장', '회원']; // Hierarchy Levels
 
-// Helper to flatten tree for table display with depth
 interface FlattenedUser extends User {
     depth: number;
 }
 
-const getDescendants = (users: User[], rootId: number, depth: number = 1): FlattenedUser[] => {
-    const result: FlattenedUser[] = [];
-    const children = users.filter(u => u.parentId === rootId); // Direct children
-    children.forEach(child => {
-        result.push({ ...child, depth });
-        result.push(...getDescendants(users, child.id!, depth + 1));
-    });
-    return result;
-};
-
 export default function CalculatorPage() {
-    const [allUsers, setAllUsers] = useState<User[]>([]);
+    const { currentUser } = useAuth()!;
+    const [searchParams] = useSearchParams();
 
-    // Fetch users from Firestore
-    useEffect(() => {
-        const q = query(collection(firestoreDb, "users"));
-        const unsubscribe = onSnapshot(q, (querySnapshot) => {
-            const usersData: User[] = [];
-            querySnapshot.forEach((doc) => {
-                usersData.push({ id: parseInt(doc.id), ...doc.data() } as User);
-            });
-            setAllUsers(usersData);
-        });
-        return () => unsubscribe();
-    }, []);
+    // ===== 상태 관리 (State Management) =====
+    const [selectedMasterId, setSelectedMasterId] = useState<number | null>(null);
+    const [users, setUsers] = useState<User[]>([]);
 
-    const topLevelUsers = allUsers.filter(u => u.level === LEVELS[0]);
-
-    const navigate = useNavigate();
-
-    // ===== localStorage 키 정의 (localStorage keys) =====
-    const STORAGE_KEY_MASTER = 'calculator_selectedMasterId';
-    const STORAGE_KEY_INPUTS = 'calculator_inputs';
-
-    // 선택된 대마스터 상태 - localStorage에서 초기값 불러오기
-    // Selected master state - load initial value from localStorage
-    const [selectedMasterId, setSelectedMasterId] = useState<string>(() => {
-        const saved = localStorage.getItem(STORAGE_KEY_MASTER);
-        return saved || '';
-    });
-
-    // 입력값 상태 - localStorage에서 초기값 불러오기
-    // Input values state - load initial value from localStorage
-    const [inputs, setInputs] = useState<Record<number, { c: string, s: string, l: string }>>(() => {
-        const saved = localStorage.getItem(STORAGE_KEY_INPUTS);
-        return saved ? JSON.parse(saved) : {};
-    });
+    // inputs state: Key=userId, Value={c, s, l} (string format for input fields)
+    const [inputs, setInputs] = useState<Record<number, { c: string, s: string, l: string }>>({});
 
     const [results, setResults] = useState<CalculationResult[] | null>(null);
+    const [isCalculating, setIsCalculating] = useState(false);
 
-    // ===== URL 파라미터로 정산 기록 불러오기 (Load log from URL params) =====
-    const [searchParams, setSearchParams] = useSearchParams();
-    const logIdParam = searchParams.get('logId');
-
-    // logId가 URL에 있으면 해당 기록을 Firestore에서 불러옴
-    // If logId exists in URL, load that log from Firestore
-    useEffect(() => {
-        const loadLogData = async (logId: string) => {
-            try {
-                const docRef = doc(firestoreDb, "logs", logId);
-                const docSnap = await getDoc(docRef);
-
-                if (docSnap.exists()) {
-                    const data = docSnap.data();
-
-                    // 저장된 입력값 복원 (Restore saved inputs)
-                    if (data.selectedMasterId) {
-                        setSelectedMasterId(data.selectedMasterId.toString());
-                    }
-                    if (data.inputs) {
-                        setInputs(data.inputs);
-                    }
-
-                    // URL에서 logId 파라미터 제거 (일회성 로드)
-                    // Remove logId from URL (one-time load)
-                    setSearchParams({});
-
-                    alert('정산 기록을 불러왔습니다. 값을 수정하거나 다시 계산할 수 있습니다.');
-                } else {
-                    alert('해당 정산 기록을 찾을 수 없습니다.');
-                }
-            } catch (error) {
-                console.error('기록 불러오기 실패:', error);
-                alert('기록을 불러오는 데 실패했습니다.');
-            }
-        };
-
-        if (logIdParam) {
-            loadLogData(logIdParam);
-        }
-    }, [logIdParam, setSearchParams]);
-
-    // ===== 자동 저장: selectedMasterId 변경 시 localStorage에 저장 =====
-    // Auto-save: Save to localStorage when selectedMasterId changes
-    useEffect(() => {
-        localStorage.setItem(STORAGE_KEY_MASTER, selectedMasterId);
-    }, [selectedMasterId]);
-
-    // ===== 자동 저장: inputs 변경 시 localStorage에 저장 =====  
-    // Auto-save: Save to localStorage when inputs change
-    useEffect(() => {
-        localStorage.setItem(STORAGE_KEY_INPUTS, JSON.stringify(inputs));
-    }, [inputs]);
-
-    // ===== 마스터 접기/펼치기 상태 (Collapsible master groups) =====
-    // 어떤 마스터가 펼쳐져 있는지 추적
-    // Track which masters are expanded
+    // 접기/펼치기 상태 관리 (Expanded Masters State)
     const [expandedMasters, setExpandedMasters] = useState<Set<number>>(new Set());
 
-    // 마스터 펼치기/접기 토글 함수
-    // Toggle expand/collapse for a master
-    const toggleMaster = (masterId: number) => {
-        setExpandedMasters(prev => {
-            const newSet = new Set(prev);
-            if (newSet.has(masterId)) {
-                newSet.delete(masterId);
-            } else {
-                newSet.add(masterId);
+    // ===== 데이터 로어 (Data Loading) =====
+    useEffect(() => {
+        const loadUsers = async () => {
+            if (currentUser) {
+                const allUsers = await db.users.toArray();
+                setUsers(allUsers);
             }
-            return newSet;
-        });
-    };
+        };
+        loadUsers();
+    }, [currentUser]);
 
-    // Get list of members to display (Selected Master + All Descendants)
+    // ===== LocalStorage 저장/로드 (LocalStorage Persistence) =====
+    // 1. Load from LocalStorage on mount (if no URL param)
+    useEffect(() => {
+        const logId = searchParams.get('logId');
+        if (!logId) {
+            const savedMasterId = localStorage.getItem('calc_selectedMasterId');
+            const savedInputs = localStorage.getItem('calc_inputs');
+
+            if (savedMasterId) setSelectedMasterId(Number(savedMasterId));
+            if (savedInputs) {
+                try {
+                    setInputs(JSON.parse(savedInputs));
+                } catch (e) {
+                    console.error("Failed to parse saved inputs", e);
+                }
+            }
+        }
+    }, [searchParams]);
+
+    // 2. Save to LocalStorage on change
+    useEffect(() => {
+        if (selectedMasterId) {
+            localStorage.setItem('calc_selectedMasterId', String(selectedMasterId));
+        } else {
+            localStorage.removeItem('calc_selectedMasterId');
+        }
+    }, [selectedMasterId]);
+
+    useEffect(() => {
+        if (Object.keys(inputs).length > 0) {
+            localStorage.setItem('calc_inputs', JSON.stringify(inputs));
+        } else {
+            localStorage.removeItem('calc_inputs');
+        }
+    }, [inputs]);
+
+    // ===== URL 파라미터 로드 기능 (Load from Log ID) =====
+    useEffect(() => {
+        const loadLogData = async () => {
+            const logId = searchParams.get('logId');
+            if (logId) {
+                try {
+                    const docRef = doc(firestoreDb, 'calculation_logs', logId);
+                    const docSnap = await getDoc(docRef);
+
+                    if (docSnap.exists()) {
+                        const data = docSnap.data();
+
+                        // 복원 로직
+                        if (data.selectedMasterId) setSelectedMasterId(data.selectedMasterId);
+                        if (data.inputs) setInputs(data.inputs);
+
+                        // 결과가 있다면 같이 복원할 수도 있지만, 
+                        // 계산 로직이 바뀌었을 수도 있으므로 입력값만 복원하고 재계산 유도하는 것이 안전함.
+                        // 하지만 사용자 편의를 위해 결과값도 저장되어 있다면 보여줄 수 있음.
+                        // 현재 DB 구조엔 결과도 저장됨. 하지만 구조가 복잡하니 입력값 복원 위주로 처리.
+
+                        // 알림
+                        // alert('과거 기록을 불러왔습니다. 계산하기 버튼을 눌러 결과를 확인하세요.');
+                    } else {
+                        console.error("No such log document!");
+                    }
+                } catch (error) {
+                    console.error("Error loading log:", error);
+                }
+            }
+        };
+        loadLogData();
+    }, [searchParams]);
+
+    // ===== 데이터 가공 (Data Processing) =====
+    // "대마스터" 목록 (Top-level masters)
+    const grandMasters = useMemo(() => {
+        return users.filter(u => u.level === LEVELS[0]);
+    }, [users]);
+
+    // 선택된 대마스터 하위의 모든 회원 (All descendants of selected Grand Master)
     const targetMembers = useMemo(() => {
         if (!selectedMasterId) return [];
-        const master = allUsers.find(u => u.id === parseInt(selectedMasterId));
-        if (!master) return [];
 
-        const descendants = getDescendants(allUsers, master.id!);
-        return [{ ...master, depth: 0 } as FlattenedUser, ...descendants];
-    }, [selectedMasterId, allUsers]);
+        const result: FlattenedUser[] = [];
+        const master = users.find(u => u.id === selectedMasterId);
 
-    // Calculate Grand Master totals from all Masters (level 1)
-    const grandMasterTotals = useMemo(() => {
-        const parseAmount = (val: string) => parseFloat((val || '0').replace(/,/g, '')) || 0;
+        if (master) {
+            // 재귀적으로 하위 회원 찾기 (Recursive find)
+            const findChildren = (parentId: number, depth: number) => {
+                const children = users.filter(u => u.parentId === parentId);
+                children.forEach(child => {
+                    result.push({ ...child, depth });
+                    findChildren(child.id!, depth + 1);
+                });
+            };
 
-        // Find all Masters (level 1, direct children of Grand Master)
-        const masters = targetMembers.filter(u => u.level === LEVELS[1]);
-
-        let totalC = 0, totalS = 0, totalL = 0;
-        masters.forEach(m => {
-            const inp = inputs[m.id!] || { c: '0', s: '0', l: '0' };
-            totalC += parseAmount(inp.c);
-            totalS += parseAmount(inp.s);
-            totalL += parseAmount(inp.l);
-        });
-
-        // Format with commas
-        const formatNumber = (num: number) => num.toLocaleString();
-
-        return {
-            c: formatNumber(totalC),
-            s: formatNumber(totalS),
-            l: formatNumber(totalL)
-        };
-    }, [targetMembers, inputs]);
-
-    const handleInputChange = (userId: number, field: 'c' | 's' | 'l', value: string) => {
-        // Remove existing commas to clean
-        const rawValue = value.replace(/,/g, '');
-
-        // Allow empty string to clear input
-        if (rawValue === '') {
-            setInputs(prev => {
-                const userState = prev[userId] || { c: '', s: '', l: '' };
-                return {
-                    ...prev,
-                    [userId]: { ...userState, [field]: '' }
-                };
-            });
-            return;
+            result.push({ ...master, depth: 0 });
+            findChildren(master.id!, 1);
         }
 
-        // Validate number (allow trailing dot for decimal typing)
-        if (isNaN(Number(rawValue))) return;
+        return result;
+    }, [selectedMasterId, users]);
 
-        // Format integer part with commas
-        const parts = rawValue.split('.');
-        parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+    // ===== 핸들러 (Handlers) =====
+    const handleMasterSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
+        const id = Number(e.target.value);
+        setSelectedMasterId(id);
+        setInputs({}); // 마스터 변경 시 입력값 초기화
+        setResults(null);
+        setExpandedMasters(new Set()); // 마스터 변경 시 펼침 상태 초기화
+    };
 
-        const displayValue = parts.join('.');
+    const handleInputChange = (userId: number, field: 'c' | 's' | 'l', value: string) => {
+        // 숫자와 콤마만 허용
+        const cleanValue = value.replace(/[^0-9,]/g, '');
+        // 콤마 포맷팅
+        const formattedValue = Number(cleanValue.replace(/,/g, '')).toLocaleString();
 
-        setInputs(prev => {
-            const userState = prev[userId] || { c: '', s: '', l: '' };
-            return {
-                ...prev,
-                [userId]: {
-                    ...userState,
-                    [field]: displayValue
-                }
-            };
+        setInputs(prev => ({
+            ...prev,
+            [userId]: {
+                ...prev[userId],
+                [field]: cleanValue ? formattedValue : ''
+            }
+        }));
+    };
+
+    const toggleMaster = (masterId: number) => {
+        setExpandedMasters(prev => {
+            const next = new Set(prev);
+            if (next.has(masterId)) {
+                next.delete(masterId);
+            } else {
+                next.add(masterId);
+            }
+            return next;
         });
     };
 
     const handleCalculate = async () => {
-        if (!selectedMasterId) return;
-
-        const batchData: BatchInput[] = targetMembers.map(u => {
-            const inp = inputs[u.id!] || { c: '0', s: '0', l: '0' };
-            // Parse formatted strings back to numbers
-            const parseAmount = (val: string) => parseFloat((val || '0').replace(/,/g, '')) || 0;
-
-            return {
-                performerId: u.id!,
-                amounts: {
-                    casino: parseAmount(inp.c),
-                    slot: parseAmount(inp.s),
-                    losing: parseAmount(inp.l)
-                }
-            };
-        }).filter(b => b.amounts.casino > 0 || b.amounts.slot > 0 || b.amounts.losing > 0);
-
-        if (batchData.length === 0) {
-            alert('입력된 금액이 없습니다. 최소 하나 이상의 금액을 입력해주세요.');
-            return;
-        }
-
+        setIsCalculating(true);
         try {
-            const res = await calculateBatchCommission(batchData, allUsers);
-            setResults(res);
-        } catch (e) {
-            console.error(e);
+            const batchInputs: BatchInput[] = [];
+
+            // 입력값이 있는 회원들만 처리
+            Object.entries(inputs).forEach(([userIdStr, val]) => {
+                const userId = Number(userIdStr);
+                const c = parseFloat(val.c.replace(/,/g, '') || '0');
+                const s = parseFloat(val.s.replace(/,/g, '') || '0');
+                const l = parseFloat(val.l.replace(/,/g, '') || '0');
+
+                if (c > 0 || s > 0 || l > 0) {
+                    batchInputs.push({
+                        performerId: userId,
+                        amounts: { casino: c, slot: s, losing: l }
+                    });
+                }
+            });
+
+            // 계산 실행 (Execute Calculation)
+            const calcResults = await calculateBatchCommission(batchInputs, users);
+            setResults(calcResults);
+
+            // 자동 저장 (Firestore 저장 로직은 별도 버튼 또는 이 시점에 수행)
+            // Save to Firestore History can be implemented here if needed logic exists
+            await handleSave(calcResults);
+
+        } catch (error) {
+            console.error(error);
             alert('계산 중 오류가 발생했습니다.');
+        } finally {
+            setIsCalculating(false);
         }
     };
 
-    const handleSave = async () => {
-        if (!results) return;
+    // Firestore에 저장 (Save to Firestore)
+    const handleSave = async (calcResults: CalculationResult[]) => {
+        try {
+            // 날짜 기반 로그 생성
+            const today = new Date(); // 로컬 시간대 사용 (Use local time)
 
-        // Calculate total inputs for the log (sum of all inputs)
-        const parseAmount = (val: string) => parseFloat((val || '0').replace(/,/g, '')) || 0;
+            // 총 롤링 및 정산금 계산
+            let totalCasino = 0;
+            let totalSlot = 0;
+            let totalLosing = 0;
 
-        let totalC = 0, totalS = 0, totalL = 0;
-        targetMembers.forEach(u => {
-            const inp = inputs[u.id!] || { c: '0', s: '0', l: '0' };
-            totalC += parseAmount(inp.c);
-            totalS += parseAmount(inp.s);
-            totalL += parseAmount(inp.l);
-        });
+            // 입력값 기준 합계 (Total from Inputs)
+            Object.values(inputs).forEach(inp => {
+                totalCasino += parseFloat(inp.c.replace(/,/g, '') || '0');
+                totalSlot += parseFloat(inp.s.replace(/,/g, '') || '0');
+                totalLosing += parseFloat(inp.l.replace(/,/g, '') || '0');
+            });
 
-        // Save to Firestore (정산 기록 저장 - 불러오기 기능용 inputs도 같이 저장)
-        await addDoc(collection(firestoreDb, "logs"), {
-            date: new Date(),
-            casinoRolling: totalC,
-            slotRolling: totalS,
-            losingAmount: totalL,
-            results: results,
-            // 불러오기 기능용 필드 (For restore feature)
-            selectedMasterId: parseInt(selectedMasterId),
-            inputs: inputs
-        });
+            // 저장할 데이터 구조
+            const logData = {
+                date: today,
+                casinoRolling: totalCasino, // 여기서는 수정된 로직상 "총 수수료"가 됩니다. 
+                slotRolling: totalSlot,
+                losingAmount: totalLosing,
+                results: calcResults,
+                // 저장 시 복원 위한 데이터 추가
+                selectedMasterId: selectedMasterId,
+                inputs: inputs
+            };
 
-        alert('저장되었습니다!');
-        setResults(null);
-        setInputs({});
-        navigate('/');
+            // 컬렉션에 추가
+            const docRef = doc(firestoreDb, 'calculation_logs', today.getTime().toString());
+            await setDoc(docRef, logData);
+
+        } catch (e) {
+            console.error("Error saving log:", e);
+        }
     };
-
-    const totalCommission = results?.reduce((sum, item) => sum + item.amount, 0) || 0;
-
-    // Calculate Site Profit: Grand Master's Losing - Total Commission
-    const siteProfit = useMemo(() => {
-        if (!selectedMasterId) return 0;
-        // Use grandMasterTotals which is the sum of all Masters
-        const grandMasterLosing = parseFloat(grandMasterTotals.l.replace(/,/g, '')) || 0;
-
-        return grandMasterLosing - totalCommission;
-    }, [selectedMasterId, grandMasterTotals, totalCommission]);
 
     const handleDownloadPDF = async () => {
         const element = document.getElementById('results-summary');
         if (!element) return;
 
         try {
-            const canvas = await html2canvas(element, {
-                scale: 2,
-                logging: false,
-                useCORS: true,
-                backgroundColor: '#ffffff'
-            });
-
+            const canvas = await html2canvas(element, { scale: 2 });
             const imgData = canvas.toDataURL('image/png');
-            const pdf = new jsPDF({
-                orientation: 'portrait',
-                unit: 'mm',
-                format: 'a4'
-            });
+            const pdf = new jsPDF('p', 'mm', 'a4');
+            const pdfWidth = pdf.internal.pageSize.getWidth();
+            const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
 
-            const imgWidth = 210;
-            const imgHeight = (canvas.height * imgWidth) / canvas.width;
-
-            pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
-            pdf.save(`Commission_Results_${new Date().toISOString().slice(0, 10)}.pdf`);
+            pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+            pdf.save(`fee_settlement_${format(new Date(), 'yyyyMMdd_HHmm')}.pdf`);
         } catch (error) {
-            console.error('PDF Generation Error:', error);
+            console.error('PDF generation failed', error);
             alert('PDF 생성에 실패했습니다.');
         }
     };
 
+    // 총 지급 수수료 합계 (Total Commission)
+    const totalCommission = results?.reduce((acc, curr) => acc + curr.amount, 0) || 0;
+
+    // 본사(최고 관리자) 수익 추정 (본인이 최상위가 아닐 수 있으므로 로직에 따라 다름)
+    // 여기서는 단순히 전체 결과의 합으로 표시
+    const siteProfit = 0; // 이 부분은 요구사항에 따라 수정 필요 (현재는 0으로 둠)
+
     return (
-        <div className="space-y-6 pb-24">
-            <div className="flex items-center space-x-3 text-primary-700">
-                <div className="p-2 bg-primary-100 rounded-lg">
-                    <CalcIcon size={24} />
+        <div className="max-w-5xl mx-auto space-y-6">
+            <div className="flex items-center gap-3 mb-8">
+                <div className="p-3 bg-slate-900 rounded-2xl shadow-lg shadow-slate-900/20">
+                    <CalcIcon className="text-white" size={24} />
                 </div>
-                <h2 className="text-lg font-bold">팀 정산</h2>
+                <div>
+                    <h1 className="text-2xl font-black text-slate-800 tracking-tight">
+                        수수료 정산
+                    </h1>
+                    <p className="text-slate-500 font-medium">
+                        하부 회원의 수수료를 입력하여 상위 수익을 정산합니다.
+                    </p>
+                </div>
             </div>
 
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-                <div className="p-4 border-b border-slate-100 bg-slate-50/50">
-                    <label className="block text-sm font-bold text-slate-700 mb-2">최상위 관리자 선택</label>
+            {/* 마스터 선택 (Select Master) */}
+            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                <label className="block text-sm font-bold text-slate-700 mb-2">
+                    정산할 대마스터 선택
+                </label>
+                <div className="relative">
                     <select
-                        value={selectedMasterId}
-                        onChange={e => {
-                            setSelectedMasterId(e.target.value);
-                            setInputs({});
-                            setResults(null);
-                        }}
-                        className="w-full p-3 rounded-xl border border-slate-300 focus:ring-2 focus:ring-primary-500 outline-none bg-white font-bold text-lg"
+                        value={selectedMasterId || ''}
+                        onChange={handleMasterSelect}
+                        className="w-full pl-4 pr-10 py-3 bg-slate-50 border border-slate-200 rounded-xl appearance-none font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition-all"
                     >
-                        <option value="">팀 선택...</option>
-                        {topLevelUsers.map(u => (
-                            <option key={u.id} value={u.id}>
-                                {u.name}
+                        <option value="">선택해주세요</option>
+                        {grandMasters.map(gm => (
+                            <option key={gm.id} value={gm.id}>
+                                {gm.name} ({gm.level})
                             </option>
                         ))}
                     </select>
+                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={20} />
+                </div>
+            </div>
+
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                <div className="p-4 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
+                    <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                        <Check className="text-slate-900" size={18} />
+                        정산 내역 입력
+                    </h3>
+                    <div className="flex gap-4 text-xs font-bold text-slate-400">
+                        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-400"></span>Fee(C)</span>
+                        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-purple-400"></span>Fee(S)</span>
+                        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-rose-400"></span>Losing</span>
+                    </div>
                 </div>
 
-                {targetMembers.length > 0 && (() => {
-                    // 대마스터 찾기 (Find Grand Master)
-                    const grandMaster = targetMembers.find(u => u.level === LEVELS[0]);
-                    // 마스터들 찾기 (Find Masters - direct children of Grand Master)
-                    const masters = targetMembers.filter(u => u.level === LEVELS[1]);
+                <div className="max-h-[600px] overflow-y-auto">
+                    {targetMembers.length > 0 && (() => {
+                        // 대마스터 찾기 (Find Grand Master)
+                        const grandMaster = targetMembers.find(u => u.level === LEVELS[0]);
+                        // 마스터들 찾기 (Find Masters - direct children of Grand Master)
+                        const masters = targetMembers.filter(u => u.level === LEVELS[1]);
 
-                    // 각 마스터별 하위 회원 가져오기 (Get subordinates for each master)
-                    const getSubordinates = (masterId: number) => {
-                        return targetMembers.filter(u => {
-                            if (u.level === LEVELS[0] || u.level === LEVELS[1]) return false;
-                            // 상위 체인을 따라 올라가면서 해당 마스터에 속하는지 확인
-                            let current = u;
-                            while (current.parentId) {
-                                if (current.parentId === masterId) return true;
-                                const parent = targetMembers.find(p => p.id === current.parentId);
-                                if (!parent) break;
-                                if (parent.level === LEVELS[1]) return parent.id === masterId;
-                                current = parent;
-                            }
-                            return false;
-                        });
-                    };
+                        // 각 마스터별 하위 회원 가져오기 (Get subordinates for each master)
+                        const getSubordinates = (masterId: number) => {
+                            return targetMembers.filter(u => {
+                                if (u.level === LEVELS[0] || u.level === LEVELS[1]) return false;
+                                // 상위 체인을 따라 올라가면서 해당 마스터에 속하는지 확인
+                                let current = u;
+                                while (current.parentId) {
+                                    if (current.parentId === masterId) return true;
+                                    const parent = targetMembers.find(p => p.id === current.parentId);
+                                    if (!parent) break;
+                                    if (parent.level === LEVELS[1]) return parent.id === masterId;
+                                    current = parent;
+                                }
+                                return false;
+                            });
+                        };
 
-                    // 마스터별 하위 회원 합계 계산 (Calculate totals per master)
-                    const getMasterTotals = (masterId: number) => {
-                        const subs = getSubordinates(masterId);
-                        const parseAmount = (val: string) => parseFloat((val || '0').replace(/,/g, '')) || 0;
-                        let totalC = 0, totalS = 0, totalL = 0;
+                        // 마스터별 하위 회원 합계 계산 (Calculate totals per master)
+                        const getMasterTotals = (masterId: number) => {
+                            const subs = getSubordinates(masterId);
+                            const parseAmount = (val: string) => parseFloat((val || '0').replace(/,/g, '')) || 0;
+                            let totalC = 0, totalS = 0, totalL = 0;
 
-                        // 마스터 자신의 입력값 포함
-                        const masterInp = inputs[masterId] || { c: '0', s: '0', l: '0' };
-                        totalC += parseAmount(masterInp.c);
-                        totalS += parseAmount(masterInp.s);
-                        totalL += parseAmount(masterInp.l);
+                            // 마스터 자신의 입력값 포함
+                            const masterInp = inputs[masterId] || { c: '0', s: '0', l: '0' };
+                            totalC += parseAmount(masterInp.c);
+                            totalS += parseAmount(masterInp.s);
+                            totalL += parseAmount(masterInp.l);
 
-                        // 하위 회원들의 입력값 합산
-                        subs.forEach(s => {
-                            const inp = inputs[s.id!] || { c: '0', s: '0', l: '0' };
-                            totalC += parseAmount(inp.c);
-                            totalS += parseAmount(inp.s);
-                            totalL += parseAmount(inp.l);
-                        });
+                            // 하위 회원들의 입력값 합산
+                            subs.forEach(s => {
+                                const inp = inputs[s.id!] || { c: '0', s: '0', l: '0' };
+                                totalC += parseAmount(inp.c);
+                                totalS += parseAmount(inp.s);
+                                totalL += parseAmount(inp.l);
+                            });
 
-                        const formatNumber = (num: number) => num > 0 ? num.toLocaleString() : '';
-                        return { c: formatNumber(totalC), s: formatNumber(totalS), l: formatNumber(totalL) };
-                    };
+                            const formatNumber = (num: number) => num > 0 ? num.toLocaleString() : '';
+                            return { c: formatNumber(totalC), s: formatNumber(totalS), l: formatNumber(totalL) };
+                        };
 
-                    return (
-                        <div className="divide-y divide-slate-100">
-                            {/* 대마스터 (Grand Master) - 항상 표시 */}
-                            {grandMaster && (
-                                <div className="p-4 bg-amber-50/50 border-b-2 border-amber-200">
-                                    <div className="flex items-center mb-3">
-                                        <div className="flex-1 min-w-0">
-                                            <div className="flex items-center gap-2">
-                                                <span className="font-bold text-slate-800 truncate text-sm">
-                                                    {grandMaster.name}
-                                                </span>
-                                                <span className="text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wide border bg-amber-50 text-amber-700 border-amber-100">
-                                                    {grandMaster.level}
-                                                </span>
+                        // 대마스터 전체 합계
+                        const grandMasterTotals = (() => {
+                            let totalC = 0, totalS = 0, totalL = 0;
+                            const parseAmount = (val: string) => parseFloat((val || '0').replace(/,/g, '')) || 0;
+
+                            targetMembers.forEach(m => {
+                                const inp = inputs[m.id!] || { c: '0', s: '0', l: '0' };
+                                totalC += parseAmount(inp.c);
+                                totalS += parseAmount(inp.s);
+                                totalL += parseAmount(inp.l);
+                            });
+
+                            const formatNumber = (num: number) => num > 0 ? num.toLocaleString() : '';
+                            return { c: formatNumber(totalC), s: formatNumber(totalS), l: formatNumber(totalL) };
+                        })();
+
+                        return (
+                            <div className="divide-y divide-slate-100">
+                                {/* 대마스터 (Grand Master) - 항상 표시 */}
+                                {grandMaster && (
+                                    <div className="p-4 bg-amber-50/50 border-b-2 border-amber-200">
+                                        <div className="flex items-center mb-3">
+                                            <div className="flex-1 min-w-0">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="font-bold text-slate-800 truncate text-sm">
+                                                        {grandMaster.name}
+                                                    </span>
+                                                    <span className="text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wide border bg-amber-50 text-amber-700 border-amber-100">
+                                                        {grandMaster.level}
+                                                    </span>
+                                                </div>
                                             </div>
                                         </div>
-                                    </div>
-                                    {/* Grand Master totals (read-only) */}
-                                    <div className="grid grid-cols-3 gap-2">
-                                        {['c', 's', 'l'].map((field, idx) => (
-                                            <div key={field} className="relative">
-                                                <div className="absolute inset-y-0 left-2 flex items-center pointer-events-none">
-                                                    <span className={clsx("text-[10px] font-bold",
-                                                        idx === 0 ? "text-blue-400" : idx === 1 ? "text-purple-400" : "text-rose-400"
-                                                    )}>{field.toUpperCase()}</span>
+                                        {/* Grand Master totals (read-only) */}
+                                        <div className="grid grid-cols-3 gap-2">
+                                            {['c', 's', 'l'].map((field, idx) => (
+                                                <div key={field} className="relative">
+                                                    <div className="absolute inset-y-0 left-2 flex items-center pointer-events-none">
+                                                        <span className={clsx("text-[10px] font-bold",
+                                                            idx === 0 ? "text-blue-400" : idx === 1 ? "text-purple-400" : "text-rose-400"
+                                                        )}>{field.toUpperCase() === 'L' ? 'L' : `Fee(${field.toUpperCase()})`}</span>
+                                                    </div>
+                                                    <input
+                                                        type="text"
+                                                        value={grandMasterTotals[field as 'c' | 's' | 'l']}
+                                                        disabled
+                                                        className="w-full pl-12 pr-1 py-2 border rounded-lg font-bold outline-none text-sm text-right bg-amber-100/50 border-amber-200 text-amber-900 cursor-not-allowed"
+                                                    />
                                                 </div>
-                                                <input
-                                                    type="text"
-                                                    value={grandMasterTotals[field as 'c' | 's' | 'l']}
-                                                    disabled
-                                                    className="w-full pl-6 pr-1 py-2 border rounded-lg font-bold outline-none text-sm text-right bg-amber-100/50 border-amber-200 text-amber-900 cursor-not-allowed"
-                                                />
-                                            </div>
-                                        ))}
+                                            ))}
+                                        </div>
                                     </div>
-                                </div>
-                            )}
+                                )}
 
-                            {/* 마스터 목록 (Masters List) - 접기/펼치기 가능 */}
-                            {masters.map(master => {
-                                const isExpanded = expandedMasters.has(master.id!);
-                                const subordinates = getSubordinates(master.id!);
-                                const masterTotals = getMasterTotals(master.id!);
-                                const masterInp = inputs[master.id!] || { c: '', s: '', l: '' };
+                                {/* 마스터 목록 (Masters List) - 접기/펼치기 가능 */}
+                                {masters.map(master => {
+                                    const isExpanded = expandedMasters.has(master.id!);
+                                    const subordinates = getSubordinates(master.id!);
+                                    const masterTotals = getMasterTotals(master.id!);
+                                    const masterInp = inputs[master.id!] || { c: '', s: '', l: '' };
 
-                                return (
-                                    <div key={master.id}>
-                                        {/* 마스터 헤더 (Master Header) - 클릭하면 펼침/접힘 */}
-                                        <div
-                                            className={clsx(
-                                                "p-4 cursor-pointer transition-colors",
-                                                isExpanded ? "bg-emerald-50/50" : "bg-white hover:bg-slate-50"
-                                            )}
-                                            onClick={() => toggleMaster(master.id!)}
-                                        >
-                                            <div className="flex items-center mb-3">
-                                                {/* 펼침/접힘 아이콘 */}
-                                                <div className="mr-2 text-slate-400">
-                                                    {isExpanded ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
-                                                </div>
-                                                <div className="flex-1 min-w-0">
-                                                    <div className="flex items-center gap-2">
+                                    return (
+                                        <div key={master.id}>
+                                            {/* 마스터 헤더 (Master Header) - 클릭하면 펼침/접힘 */}
+                                            <div
+                                                className={clsx(
+                                                    "p-4 cursor-pointer transition-colors",
+                                                    isExpanded ? "bg-emerald-50/50" : "bg-white hover:bg-slate-50"
+                                                )}
+                                                onClick={() => toggleMaster(master.id!)}
+                                            >
+                                                <div className="flex items-center justify-between mb-3">
+                                                    <div className="flex items-center gap-2 overflow-hidden">
+                                                        {isExpanded ? (
+                                                            <ChevronDown size={16} className="text-emerald-500 shrink-0" />
+                                                        ) : (
+                                                            <ChevronRight size={16} className="text-slate-400 shrink-0" />
+                                                        )}
                                                         <span className="font-bold text-slate-800 truncate text-sm">
                                                             {master.name}
                                                         </span>
-                                                        <span className="text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wide border bg-emerald-50 text-emerald-700 border-emerald-100">
+                                                        <span className="text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wide border bg-slate-50 text-slate-500 border-slate-100">
                                                             {master.level}
                                                         </span>
-                                                        {subordinates.length > 0 && (
-                                                            <span className="text-[10px] text-slate-400">
-                                                                (+{subordinates.length}명)
-                                                            </span>
-                                                        )}
+                                                    </div>
+                                                    <div className="text-[10px] text-slate-400 font-mono">
+                                                        하부 {subordinates.length}명
                                                     </div>
                                                 </div>
-                                            </div>
 
-                                            {/* 마스터 합계 표시 (접힌 상태) 또는 입력 필드 (펼친 상태) */}
-                                            <div className="grid grid-cols-3 gap-2 ml-6" onClick={e => e.stopPropagation()}>
-                                                {['c', 's', 'l'].map((field, idx) => (
-                                                    <div key={field} className="relative">
-                                                        <div className="absolute inset-y-0 left-2 flex items-center pointer-events-none">
-                                                            <span className={clsx("text-[10px] font-bold",
-                                                                idx === 0 ? "text-blue-400" : idx === 1 ? "text-purple-400" : "text-rose-400"
-                                                            )}>{field.toUpperCase()}</span>
-                                                        </div>
-                                                        {!isExpanded ? (
-                                                            // 접힌 상태: 합계 표시
-                                                            <input
-                                                                type="text"
-                                                                value={masterTotals[field as 'c' | 's' | 'l']}
-                                                                disabled
-                                                                className="w-full pl-6 pr-1 py-2 border rounded-lg font-bold outline-none text-sm text-right bg-slate-100 border-slate-200 text-slate-600 cursor-not-allowed"
-                                                            />
-                                                        ) : (
-                                                            // 펼친 상태: 입력 가능
-                                                            <input
-                                                                type="text"
-                                                                inputMode="decimal"
-                                                                placeholder="0"
-                                                                value={masterInp[field as 'c' | 's' | 'l'] || ''}
-                                                                onChange={e => handleInputChange(master.id!, field as 'c' | 's' | 'l', e.target.value)}
-                                                                className={clsx(
-                                                                    "w-full pl-6 pr-1 py-2 border rounded-lg font-bold outline-none text-sm transition-all text-right",
-                                                                    idx === 0 ? "bg-blue-50/20 border-blue-100 text-blue-900 focus:border-blue-500 focus:bg-white" :
-                                                                        idx === 1 ? "bg-purple-50/20 border-purple-100 text-purple-900 focus:border-purple-500 focus:bg-white" :
-                                                                            "bg-rose-50/20 border-rose-100 text-rose-900 focus:border-rose-500 focus:bg-white"
-                                                                )}
-                                                            />
-                                                        )}
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
+                                                {/* 마스터 합계 표시 (접힌 상태) 또는 입력 필드 (해당 마스터가 최하위라면 입력 가능) */}
+                                                <div className="grid grid-cols-3 gap-2 ml-6" onClick={e => e.stopPropagation()}>
+                                                    {['c', 's', 'l'].map((field, idx) => {
+                                                        // 마스터가 최하위인지 확인 (하위 회원이 없으면 최하위)
+                                                        const isLeaf = subordinates.length === 0;
 
-                                        {/* 하위 회원들 (Subordinates) - 펼침 상태에서만 표시 */}
-                                        {isExpanded && subordinates.map(sub => {
-                                            const subInp = inputs[sub.id!] || { c: '', s: '', l: '' };
-                                            const subDepth = (sub as FlattenedUser).depth - 1; // 마스터 기준 상대 깊이
-
-                                            return (
-                                                <div key={sub.id} className="p-4 bg-white hover:bg-slate-50 border-t border-slate-50">
-                                                    <div className="flex items-center mb-3">
-                                                        <div style={{ width: `${(subDepth + 1) * 16}px` }} className="shrink-0" />
-                                                        <div className="w-3 h-3 border-l-2 border-b-2 border-slate-300 rounded-bl-lg mr-2 -mt-1 shrink-0" />
-                                                        <div className="flex-1 min-w-0">
-                                                            <div className="flex items-center gap-2">
-                                                                <span className="font-bold text-slate-800 truncate text-sm">
-                                                                    {sub.name}
-                                                                </span>
-                                                                <span className="text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wide border bg-slate-50 text-slate-500 border-slate-100">
-                                                                    {sub.level}
-                                                                </span>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                    <div className="grid grid-cols-3 gap-2" style={{ marginLeft: `${(subDepth + 1) * 16 + 20}px` }}>
-                                                        {['c', 's', 'l'].map((field, idx) => (
+                                                        return (
                                                             <div key={field} className="relative">
                                                                 <div className="absolute inset-y-0 left-2 flex items-center pointer-events-none">
                                                                     <span className={clsx("text-[10px] font-bold",
                                                                         idx === 0 ? "text-blue-400" : idx === 1 ? "text-purple-400" : "text-rose-400"
-                                                                    )}>{field.toUpperCase()}</span>
+                                                                    )}>{field.toUpperCase() === 'L' ? 'L' : `Fee(${field.toUpperCase()})`}</span>
                                                                 </div>
-                                                                <input
-                                                                    type="text"
-                                                                    inputMode="decimal"
-                                                                    placeholder="0"
-                                                                    value={subInp[field as 'c' | 's' | 'l'] || ''}
-                                                                    onChange={e => handleInputChange(sub.id!, field as 'c' | 's' | 'l', e.target.value)}
-                                                                    className={clsx(
-                                                                        "w-full pl-6 pr-1 py-2 border rounded-lg font-bold outline-none text-sm transition-all text-right",
-                                                                        idx === 0 ? "bg-blue-50/20 border-blue-100 text-blue-900 focus:border-blue-500 focus:bg-white" :
-                                                                            idx === 1 ? "bg-purple-50/20 border-purple-100 text-purple-900 focus:border-purple-500 focus:bg-white" :
-                                                                                "bg-rose-50/20 border-rose-100 text-rose-900 focus:border-rose-500 focus:bg-white"
-                                                                    )}
-                                                                />
+                                                                {!isExpanded ? (
+                                                                    // 접힌 상태: 합계 표시
+                                                                    <input
+                                                                        type="text"
+                                                                        value={masterTotals[field as 'c' | 's' | 'l']}
+                                                                        disabled
+                                                                        className="w-full pl-12 pr-1 py-2 border rounded-lg font-bold outline-none text-sm text-right bg-slate-100 border-slate-200 text-slate-600 cursor-not-allowed"
+                                                                    />
+                                                                ) : (
+                                                                    // 펼친 상태: 최하위만 입력 가능
+                                                                    <input
+                                                                        type="text"
+                                                                        inputMode="decimal"
+                                                                        placeholder="0"
+                                                                        value={masterInp[field as 'c' | 's' | 'l'] || ''}
+                                                                        onChange={e => handleInputChange(master.id!, field as 'c' | 's' | 'l', e.target.value)}
+                                                                        disabled={!isLeaf}
+                                                                        className={clsx(
+                                                                            "w-full pl-12 pr-1 py-2 border rounded-lg font-bold outline-none text-sm transition-all text-right",
+                                                                            !isLeaf ? "bg-slate-50 border-slate-200 text-slate-400 cursor-not-allowed" :
+                                                                                idx === 0 ? "bg-blue-50/20 border-blue-100 text-blue-900 focus:border-blue-500 focus:bg-white" :
+                                                                                    idx === 1 ? "bg-purple-50/20 border-purple-100 text-purple-900 focus:border-purple-500 focus:bg-white" :
+                                                                                        "bg-rose-50/20 border-rose-100 text-rose-900 focus:border-rose-500 focus:bg-white"
+                                                                        )}
+                                                                    />
+                                                                )}
                                                             </div>
-                                                        ))}
-                                                    </div>
+                                                        );
+                                                    })}
                                                 </div>
-                                            );
-                                        })}
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    );
-                })()}
+                                            </div>
+
+                                            {/* 하위 회원들 (Subordinates) - 펼침 상태에서만 표시 */}
+                                            {isExpanded && subordinates.map(sub => {
+                                                const subInp = inputs[sub.id!] || { c: '', s: '', l: '' };
+                                                const subDepth = (sub as FlattenedUser).depth - 1; // 마스터 기준 상대 깊이
+
+                                                // 최하위 판별 (현재 리스트 내에서 이 회원을 부모로 두는 회원이 없으면 최하위)
+                                                // 주의: targetMembers는 선택된 마스터의 하위 조직도 전체임.
+                                                const isLeaf = !targetMembers.some(m => m.parentId === sub.id);
+
+                                                return (
+                                                    <div key={sub.id} className="p-4 bg-white hover:bg-slate-50 border-t border-slate-50">
+                                                        <div className="flex items-center mb-3">
+                                                            <div style={{ width: `${(subDepth + 1) * 16}px` }} className="shrink-0" />
+                                                            <div className="w-3 h-3 border-l-2 border-b-2 border-slate-300 rounded-bl-lg mr-2 -mt-1 shrink-0" />
+                                                            <div className="flex-1 min-w-0">
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className="font-bold text-slate-800 truncate text-sm">
+                                                                        {sub.name}
+                                                                    </span>
+                                                                    <span className="text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wide border bg-slate-50 text-slate-500 border-slate-100">
+                                                                        {sub.level}
+                                                                    </span>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                        <div className="grid grid-cols-3 gap-2" style={{ marginLeft: `${(subDepth + 1) * 16 + 20}px` }}>
+                                                            {['c', 's', 'l'].map((field, idx) => (
+                                                                <div key={field} className="relative">
+                                                                    <div className="absolute inset-y-0 left-2 flex items-center pointer-events-none">
+                                                                        <span className={clsx("text-[10px] font-bold",
+                                                                            idx === 0 ? "text-blue-400" : idx === 1 ? "text-purple-400" : "text-rose-400"
+                                                                        )}>{field.toUpperCase() === 'L' ? 'L' : `Fee(${field.toUpperCase()})`}</span>
+                                                                    </div>
+                                                                    <input
+                                                                        type="text"
+                                                                        inputMode="decimal"
+                                                                        placeholder="0"
+                                                                        value={subInp[field as 'c' | 's' | 'l'] || ''}
+                                                                        onChange={e => handleInputChange(sub.id!, field as 'c' | 's' | 'l', e.target.value)}
+                                                                        disabled={!isLeaf}
+                                                                        className={clsx(
+                                                                            "w-full pl-12 pr-1 py-2 border rounded-lg font-bold outline-none text-sm transition-all text-right",
+                                                                            !isLeaf ? "bg-slate-50 border-slate-200 text-slate-400 cursor-not-allowed" :
+                                                                                idx === 0 ? "bg-blue-50/20 border-blue-100 text-blue-900 focus:border-blue-500 focus:bg-white" :
+                                                                                    idx === 1 ? "bg-purple-50/20 border-purple-100 text-purple-900 focus:border-purple-500 focus:bg-white" :
+                                                                                        "bg-rose-50/20 border-rose-100 text-rose-900 focus:border-rose-500 focus:bg-white"
+                                                                        )}
+                                                                    />
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        );
+                    })()}
+                </div>
 
                 {targetMembers.length > 0 && (
                     <div className="p-4 border-t border-slate-100 bg-slate-50 flex gap-3">
@@ -613,9 +603,13 @@ export default function CalculatorPage() {
                         </button>
                         <button
                             onClick={handleCalculate}
-                            className="flex-[2] bg-slate-900 text-white font-bold py-4 rounded-xl shadow-lg shadow-slate-900/20 active:scale-[0.98] transition-all"
+                            disabled={isCalculating}
+                            className={clsx(
+                                "flex-[2] text-white font-bold py-4 rounded-xl shadow-lg transition-all active:scale-[0.98]",
+                                isCalculating ? "bg-slate-700 cursor-wait opacity-80" : "bg-slate-900 shadow-slate-900/20"
+                            )}
                         >
-                            정산 결과 계산하기
+                            {isCalculating ? '계산 중...' : '정산 결과 계산하기'}
                         </button>
                     </div>
                 )}
@@ -712,78 +706,67 @@ export default function CalculatorPage() {
                                                 losingBreakdown: ''
                                             };
                                             const depth = (u as FlattenedUser).depth;
-                                            const hasBreakdown = r.casinoBreakdown || r.slotBreakdown || r.losingBreakdown;
 
                                             return (
-                                                <>
-                                                    <tr key={u.id} className="hover:bg-slate-50/50 transition-colors">
-                                                        <td className="px-4 py-3 font-bold text-slate-900 border-l-4 border-transparent hover:border-primary-500">
-                                                            <div className="flex items-center">
-                                                                <div style={{ width: `${depth * 12}px` }} className="shrink-0 transition-all" />
-                                                                {depth > 0 && (
-                                                                    <div className="w-3 h-3 border-l-2 border-b-2 border-slate-300 rounded-bl-lg mr-2 -mt-1 shrink-0" />
-                                                                )}
-                                                                <span className={clsx("truncate", depth === 0 ? "text-base" : "text-sm")}>
-                                                                    {u.name}
-                                                                    {u.loginId && <span className="text-xs font-normal text-slate-400 ml-1">({u.loginId})</span>}
-                                                                </span>
-                                                            </div>
-                                                        </td>
-                                                        <td className="px-4 py-3 text-right font-mono text-slate-600">
-                                                            {Math.floor(r.casino).toLocaleString()}
-                                                        </td>
-                                                        <td className="px-4 py-3 text-right font-mono text-slate-600">
-                                                            {Math.floor(r.slot).toLocaleString()}
-                                                        </td>
-                                                        <td className="px-4 py-3 text-right font-mono text-slate-600">
-                                                            {Math.floor(r.losing).toLocaleString()}
-                                                        </td>
-                                                        <td className="px-4 py-3 text-right font-black text-slate-800 bg-slate-50/50">
-                                                            {Math.floor(r.total).toLocaleString()}
-                                                        </td>
-                                                    </tr>
-                                                    {/* Breakdown Row */}
-                                                    {hasBreakdown && (
-                                                        <tr className="bg-slate-50/30">
-                                                            <td colSpan={5} className="px-4 py-2">
-                                                                <details className="text-xs">
-                                                                    <summary className="cursor-pointer text-slate-500 hover:text-slate-700 font-medium">
-                                                                        📋 계산 상세 보기
-                                                                    </summary>
-                                                                    <div className="mt-2 space-y-1 text-slate-600 font-mono text-[10px] leading-relaxed whitespace-pre-wrap bg-white p-2 rounded border border-slate-200">
-                                                                        {r.casinoBreakdown && <div className="text-blue-700">{r.casinoBreakdown}</div>}
-                                                                        {r.slotBreakdown && <div className="text-purple-700">{r.slotBreakdown}</div>}
-                                                                        {r.losingBreakdown && <div className="text-rose-700">{r.losingBreakdown}</div>}
-                                                                    </div>
-                                                                </details>
-                                                            </td>
-                                                        </tr>
-                                                    )}
-                                                </>
+                                                <tr key={u.id} className="hover:bg-slate-50/50 transition-colors">
+                                                    <td className="px-4 py-3 font-bold text-slate-900 border-l-4 border-transparent hover:border-primary-500">
+                                                        <div className="flex items-center">
+                                                            <div style={{ width: `${depth * 12}px` }} className="shrink-0 transition-all" />
+                                                            {depth > 0 && (
+                                                                <div className="w-3 h-3 border-l-2 border-b-2 border-slate-300 rounded-bl-lg mr-2 -mt-1 shrink-0" />
+                                                            )}
+                                                            <span className={clsx("truncate", depth === 0 ? "text-base" : "text-sm")}>
+                                                                {u.name}
+                                                                {u.loginId && <span className="text-xs font-normal text-slate-400 ml-1">({u.loginId})</span>}
+                                                            </span>
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-4 py-3 text-right font-mono text-slate-600 align-top">
+                                                        <div>{Math.floor(r.casino).toLocaleString()}</div>
+                                                        {r.casinoBreakdown && (
+                                                            <details className="mt-1">
+                                                                <summary className="text-[10px] cursor-pointer text-slate-400 hover:text-blue-500 select-none">상세</summary>
+                                                                <div className="text-[10px] text-left text-slate-500 bg-slate-50 p-2 rounded mt-1 whitespace-pre-wrap leading-relaxed shadow-inner border border-slate-100">
+                                                                    {r.casinoBreakdown}
+                                                                </div>
+                                                            </details>
+                                                        )}
+                                                    </td>
+                                                    <td className="px-4 py-3 text-right font-mono text-slate-600 align-top">
+                                                        <div>{Math.floor(r.slot).toLocaleString()}</div>
+                                                        {r.slotBreakdown && (
+                                                            <details className="mt-1">
+                                                                <summary className="text-[10px] cursor-pointer text-slate-400 hover:text-purple-500 select-none">상세</summary>
+                                                                <div className="text-[10px] text-left text-slate-500 bg-slate-50 p-2 rounded mt-1 whitespace-pre-wrap leading-relaxed shadow-inner border border-slate-100">
+                                                                    {r.slotBreakdown}
+                                                                </div>
+                                                            </details>
+                                                        )}
+                                                    </td>
+                                                    <td className="px-4 py-3 text-right font-mono text-slate-600 align-top">
+                                                        <div>{Math.floor(r.losing).toLocaleString()}</div>
+                                                        {r.losingBreakdown && (
+                                                            <details className="mt-1">
+                                                                <summary className="text-[10px] cursor-pointer text-slate-400 hover:text-rose-500 select-none">상세</summary>
+                                                                <div className="text-[10px] text-left text-slate-500 bg-slate-50 p-2 rounded mt-1 whitespace-pre-wrap leading-relaxed shadow-inner border border-slate-100">
+                                                                    {r.losingBreakdown}
+                                                                </div>
+                                                            </details>
+                                                        )}
+                                                    </td>
+                                                    <td className="px-4 py-3 text-right font-black text-slate-800 align-top">
+                                                        {Math.floor(r.total).toLocaleString()}
+                                                    </td>
+                                                </tr>
                                             );
                                         })}
-                                        {targetMembers.length === 0 && (
-                                            <tr>
-                                                <td colSpan={5} className="px-4 py-8 text-center text-slate-400 font-medium">
-                                                    회원이 없습니다.
-                                                </td>
-                                            </tr>
-                                        )}
                                     </tbody>
                                 </table>
                             </div>
                         </div>
-
-                        <button
-                            onClick={handleSave}
-                            className="w-full py-4 bg-slate-900 text-white rounded-xl font-bold shadow-lg shadow-slate-900/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
-                        >
-                            <Check size={20} />
-                            기록 저장하기
-                        </button>
                     </div>
                 );
             })()}
-        </div >
+        </div>
     );
 }
