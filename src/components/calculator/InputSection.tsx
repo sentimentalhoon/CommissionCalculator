@@ -1,6 +1,7 @@
 import { ChevronDown, ChevronRight, Check } from 'lucide-react';
 import { clsx } from 'clsx';
-import { LEVELS, type FlattenedUser } from '../../hooks/useCalculator';
+import { LEVELS } from '../../constants/levels';
+import type { FlattenedUser } from '../../hooks/useCalculator';
 
 interface InputSectionProps {
     targetMembers: FlattenedUser[];
@@ -10,6 +11,16 @@ interface InputSectionProps {
     onToggleMaster: (masterId: string) => void;
     children?: React.ReactNode; // For ActionButtons
 }
+
+const getLevelColor = (level: string) => {
+    switch (level) {
+        case '대마스터': return 'border-amber-200 bg-amber-50 text-amber-700';
+        case '마스터': return 'border-emerald-200 bg-emerald-50 text-emerald-700';
+        case '본사': return 'border-blue-200 bg-blue-50 text-blue-700';
+        case '부본사': return 'border-purple-200 bg-purple-50 text-purple-700';
+        default: return 'border-slate-200 bg-slate-50 text-slate-600';
+    }
+};
 
 export function InputSection({
     targetMembers,
@@ -105,28 +116,38 @@ export function InputSection({
                                         <span className="font-bold text-slate-800 truncate text-sm">
                                             {grandMaster.name}
                                         </span>
-                                        <span className="text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wide border bg-amber-50 text-amber-700 border-amber-100">
+                                        <span className={clsx(
+                                            "text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wide border",
+                                            getLevelColor(grandMaster.level || '')
+                                        )}>
                                             {grandMaster.level}
                                         </span>
                                     </div>
                                 </div>
                             </div>
                             <div className="grid grid-cols-3 gap-2">
-                                {['c', 's', 'l'].map((field, idx) => (
-                                    <div key={field} className="relative">
-                                        <div className="absolute inset-y-0 left-2 flex items-center pointer-events-none">
-                                            <span className={clsx("text-[10px] font-bold",
-                                                idx === 0 ? "text-blue-400" : idx === 1 ? "text-purple-400" : "text-rose-400"
-                                            )}>{field.toUpperCase() === 'L' ? 'L' : `Fee(${field.toUpperCase()})`}</span>
+                                {['c', 's', 'l'].map((field, idx) => {
+                                    const value = grandMasterTotals[field as 'c' | 's' | 'l'];
+                                    const hasValue = !!value && value !== '0';
+                                    return (
+                                        <div key={field} className="relative">
+                                            <div className={clsx("absolute inset-y-0 left-2 flex items-center pointer-events-none transition-opacity", hasValue ? "opacity-0" : "opacity-100")}>
+                                                <span className={clsx("text-[10px] font-bold",
+                                                    idx === 0 ? "text-blue-400" : idx === 1 ? "text-purple-400" : "text-rose-400"
+                                                )}>{field.toUpperCase() === 'L' ? 'L' : `Fee(${field.toUpperCase()})`}</span>
+                                            </div>
+                                            <input
+                                                type="text"
+                                                value={value}
+                                                disabled
+                                                className={clsx(
+                                                    "w-full py-2 border rounded-lg font-bold outline-none text-sm text-right bg-amber-100/50 border-amber-200 text-amber-900 cursor-not-allowed transition-all",
+                                                    hasValue ? "pl-2 pr-2" : "pl-12 pr-1"
+                                                )}
+                                            />
                                         </div>
-                                        <input
-                                            type="text"
-                                            value={grandMasterTotals[field as 'c' | 's' | 'l']}
-                                            disabled
-                                            className="w-full pl-12 pr-1 py-2 border rounded-lg font-bold outline-none text-sm text-right bg-amber-100/50 border-amber-200 text-amber-900 cursor-not-allowed"
-                                        />
-                                    </div>
-                                ))}
+                                    );
+                                })}
                             </div>
                         </div>
                     )}
@@ -158,7 +179,10 @@ export function InputSection({
                                             <span className="font-bold text-slate-800 truncate text-sm">
                                                 {master.name}
                                             </span>
-                                            <span className="text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wide border bg-slate-50 text-slate-500 border-slate-100">
+                                            <span className={clsx(
+                                                "text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wide border",
+                                                getLevelColor(master.level || '')
+                                            )}>
                                                 {master.level}
                                             </span>
                                         </div>
@@ -170,9 +194,14 @@ export function InputSection({
                                     <div className="grid grid-cols-3 gap-2 ml-6" onClick={e => e.stopPropagation()}>
                                         {['c', 's', 'l'].map((field, idx) => {
                                             const isLeaf = subordinates.length === 0;
+                                            const value = !isExpanded
+                                                ? masterTotals[field as 'c' | 's' | 'l']
+                                                : (masterInp[field as 'c' | 's' | 'l'] || '');
+                                            const hasValue = !!value && value !== '0' && value !== '';
+
                                             return (
                                                 <div key={field} className="relative">
-                                                    <div className="absolute inset-y-0 left-2 flex items-center pointer-events-none">
+                                                    <div className={clsx("absolute inset-y-0 left-2 flex items-center pointer-events-none transition-opacity", hasValue ? "opacity-0" : "opacity-100")}>
                                                         <span className={clsx("text-[10px] font-bold",
                                                             idx === 0 ? "text-blue-400" : idx === 1 ? "text-purple-400" : "text-rose-400"
                                                         )}>{field.toUpperCase() === 'L' ? 'L' : `Fee(${field.toUpperCase()})`}</span>
@@ -182,7 +211,10 @@ export function InputSection({
                                                             type="text"
                                                             value={masterTotals[field as 'c' | 's' | 'l']}
                                                             disabled
-                                                            className="w-full pl-12 pr-1 py-2 border rounded-lg font-bold outline-none text-sm text-right bg-slate-100 border-slate-200 text-slate-600 cursor-not-allowed"
+                                                            className={clsx(
+                                                                "w-full py-2 border rounded-lg font-bold outline-none text-sm text-right bg-slate-100 border-slate-200 text-slate-600 cursor-not-allowed transition-all",
+                                                                hasValue ? "pl-2 pr-2" : "pl-12 pr-1"
+                                                            )}
                                                         />
                                                     ) : (
                                                         <input
@@ -193,7 +225,8 @@ export function InputSection({
                                                             onChange={e => onInputChange(strMasterId, field as 'c' | 's' | 'l', e.target.value)}
                                                             disabled={!isLeaf}
                                                             className={clsx(
-                                                                "w-full pl-12 pr-1 py-2 border rounded-lg font-bold outline-none text-sm transition-all text-right",
+                                                                "w-full py-2 border rounded-lg font-bold outline-none text-sm transition-all text-right",
+                                                                hasValue ? "pl-2 pr-2" : "pl-12 pr-1",
                                                                 !isLeaf ? "bg-slate-50 border-slate-200 text-slate-400 cursor-not-allowed" :
                                                                     idx === 0 ? "bg-blue-50/20 border-blue-100 text-blue-900 focus:border-blue-500 focus:bg-white" :
                                                                         idx === 1 ? "bg-purple-50/20 border-purple-100 text-purple-900 focus:border-purple-500 focus:bg-white" :
@@ -222,37 +255,45 @@ export function InputSection({
                                                         <span className="font-bold text-slate-800 truncate text-sm">
                                                             {sub.name}
                                                         </span>
-                                                        <span className="text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wide border bg-slate-50 text-slate-500 border-slate-100">
+                                                        <span className={clsx(
+                                                            "text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wide border",
+                                                            getLevelColor(sub.level || '')
+                                                        )}>
                                                             {sub.level}
                                                         </span>
                                                     </div>
                                                 </div>
                                             </div>
                                             <div className="grid grid-cols-3 gap-2" style={{ marginLeft: `${(subDepth + 1) * 16 + 20}px` }}>
-                                                {['c', 's', 'l'].map((field, idx) => (
-                                                    <div key={field} className="relative">
-                                                        <div className="absolute inset-y-0 left-2 flex items-center pointer-events-none">
-                                                            <span className={clsx("text-[10px] font-bold",
-                                                                idx === 0 ? "text-blue-400" : idx === 1 ? "text-purple-400" : "text-rose-400"
-                                                            )}>{field.toUpperCase() === 'L' ? 'L' : `Fee(${field.toUpperCase()})`}</span>
+                                                {['c', 's', 'l'].map((field, idx) => {
+                                                    const value = subInp[field as 'c' | 's' | 'l'] || '';
+                                                    const hasValue = !!value && value !== '0';
+                                                    return (
+                                                        <div key={field} className="relative">
+                                                            <div className={clsx("absolute inset-y-0 left-2 flex items-center pointer-events-none transition-opacity", hasValue ? "opacity-0" : "opacity-100")}>
+                                                                <span className={clsx("text-[10px] font-bold",
+                                                                    idx === 0 ? "text-blue-400" : idx === 1 ? "text-purple-400" : "text-rose-400"
+                                                                )}>{field.toUpperCase() === 'L' ? 'L' : `Fee(${field.toUpperCase()})`}</span>
+                                                            </div>
+                                                            <input
+                                                                type="text"
+                                                                inputMode="decimal"
+                                                                placeholder="0"
+                                                                value={value}
+                                                                onChange={e => onInputChange(sub.id!, field as 'c' | 's' | 'l', e.target.value)}
+                                                                disabled={!isLeaf}
+                                                                className={clsx(
+                                                                    "w-full py-2 border rounded-lg font-bold outline-none text-sm transition-all text-right",
+                                                                    hasValue ? "pl-2 pr-2" : "pl-12 pr-1",
+                                                                    !isLeaf ? "bg-slate-50 border-slate-200 text-slate-400 cursor-not-allowed" :
+                                                                        idx === 0 ? "bg-blue-50/20 border-blue-100 text-blue-900 focus:border-blue-500 focus:bg-white" :
+                                                                            idx === 1 ? "bg-purple-50/20 border-purple-100 text-purple-900 focus:border-purple-500 focus:bg-white" :
+                                                                                "bg-rose-50/20 border-rose-100 text-rose-900 focus:border-rose-500 focus:bg-white"
+                                                                )}
+                                                            />
                                                         </div>
-                                                        <input
-                                                            type="text"
-                                                            inputMode="decimal"
-                                                            placeholder="0"
-                                                            value={subInp[field as 'c' | 's' | 'l'] || ''}
-                                                            onChange={e => onInputChange(sub.id!, field as 'c' | 's' | 'l', e.target.value)}
-                                                            disabled={!isLeaf}
-                                                            className={clsx(
-                                                                "w-full pl-12 pr-1 py-2 border rounded-lg font-bold outline-none text-sm transition-all text-right",
-                                                                !isLeaf ? "bg-slate-50 border-slate-200 text-slate-400 cursor-not-allowed" :
-                                                                    idx === 0 ? "bg-blue-50/20 border-blue-100 text-blue-900 focus:border-blue-500 focus:bg-white" :
-                                                                        idx === 1 ? "bg-purple-50/20 border-purple-100 text-purple-900 focus:border-purple-500 focus:bg-white" :
-                                                                            "bg-rose-50/20 border-rose-100 text-rose-900 focus:border-rose-500 focus:bg-white"
-                                                            )}
-                                                        />
-                                                    </div>
-                                                ))}
+                                                    );
+                                                })}
                                             </div>
                                         </div>
                                     );

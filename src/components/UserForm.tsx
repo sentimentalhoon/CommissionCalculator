@@ -2,8 +2,8 @@
  * UserForm.tsx - 회원 등록/수정 폼 컴포넌트
  */
 
-import { useState, useEffect } from 'react';
-import { userService } from '../services/userService'; // Import userService
+import React, { useState, useEffect } from 'react';
+import { userService } from '../services/userService';
 import clsx from 'clsx';
 import { X, Check, AlertCircle, ChevronDown } from 'lucide-react';
 import { getNextLevel, LEVELS } from '../constants/levels';
@@ -12,14 +12,13 @@ import type { User } from '../db';
 interface UserFormProps {
     onClose: () => void;
     editUser?: User;
-    preselectedParentId?: string; // Changed to string
+    preselectedParentId?: string;
     restrictToTopLevel?: boolean;
 }
 
 export default function UserForm({ onClose, editUser, preselectedParentId, restrictToTopLevel }: UserFormProps) {
     const [users, setUsers] = useState<User[]>([]);
 
-    // Fetch users using userService
     useEffect(() => {
         const fetchUsers = async () => {
             const data = await userService.getAllUsers();
@@ -35,21 +34,19 @@ export default function UserForm({ onClose, editUser, preselectedParentId, restr
     const [slotRate, setSlotRate] = useState(editUser?.slotRate?.toString() || '0');
     const [losingRate, setLosingRate] = useState(editUser?.losingRate?.toString() || '0');
     const [parentId, setParentId] = useState<string>(
-        editUser?.parentId || preselectedParentId || '' // Uses string directly
+        editUser?.parentId || preselectedParentId || ''
     );
+    const [memo, setMemo] = useState(editUser?.memo || '');
+    const [memoColor, setMemoColor] = useState(editUser?.memoColor || 'yellow');
     const [isClosing, setIsClosing] = useState(false);
 
-    // Derived State: Calculate Level based on Parent
     const parentUser = users.find(u => u.id === parentId);
-
     let calculatedLevel = getNextLevel(parentUser?.level);
 
-    // Edge case: If no parent selected, it must be Top Level
     if (!parentId) {
         calculatedLevel = LEVELS[0];
     }
 
-    // Validation: Check if rates exceed parent's rates
     const isRateInvalid = parentUser && (
         parseFloat(casinoRate) > parentUser.casinoRate ||
         parseFloat(slotRate) > parentUser.slotRate ||
@@ -67,30 +64,35 @@ export default function UserForm({ onClose, editUser, preselectedParentId, restr
         e.preventDefault();
         if (!name || isLevelLimitReached || !calculatedLevel || isRateInvalid) return;
 
-        // Construct User Data
-        const userData: Omit<User, 'id'> = {
+        const userData: any = {
             name,
-            loginId: loginId || undefined,
-            memberName: memberName || undefined,
+            loginId: loginId || null,
+            memberName: memberName || null,
             casinoRate: parseFloat(casinoRate),
             slotRate: parseFloat(slotRate),
             losingRate: parseFloat(losingRate),
             parentId: parentId || null,
-            level: calculatedLevel
+            level: calculatedLevel,
+            memo: memo || null,
+            memoColor: memoColor || null
         };
+
+        // Remove undefined/null if any to be safe, though Firestore accepts null
+        Object.keys(userData).forEach(key => (userData[key] === undefined) && delete userData[key]);
+
+        console.log("Saving user data:", { id: editUser?.id, userData });
 
         try {
             if (editUser && editUser.id) {
-                // Update
-                await userService.updateUser(editUser.id, userData);
+                // Ensure ID is treated as string (defensive)
+                await userService.updateUser(String(editUser.id).trim(), userData);
             } else {
-                // Create
                 await userService.addUser(userData);
             }
             handleClose();
-        } catch (error) {
-            console.error("Failed to save user", error);
-            alert("저장 중 오류가 발생했습니다.");
+        } catch (error: any) {
+            console.error("Failed to save user:", error);
+            alert(`저장 중 오류가 발생했습니다: ${error.message || '알 수 없는 오류'}`);
         }
     };
 
@@ -109,13 +111,13 @@ export default function UserForm({ onClose, editUser, preselectedParentId, restr
                     "fixed inset-x-0 bottom-0 z-50 bg-white rounded-t-3xl shadow-2xl transition-transform duration-300 ease-out transform",
                     isClosing ? "translate-y-full" : "translate-y-0"
                 )}
-                style={{ maxHeight: '90vh' }}
+                style={{ maxHeight: '95vh' }}
             >
                 <div className="w-full flex justify-center pt-3 pb-1" onClick={handleClose}>
                     <div className="w-12 h-1.5 bg-slate-200 rounded-full" />
                 </div>
 
-                <div className="p-6 overflow-y-auto max-h-[85vh] space-y-6">
+                <div className="p-6 overflow-y-auto max-h-[90vh] space-y-6 custom-scrollbar">
                     <div className="flex justify-between items-center">
                         <div>
                             <h3 className="text-xl font-bold text-slate-800">
@@ -141,42 +143,40 @@ export default function UserForm({ onClose, editUser, preselectedParentId, restr
                     ) : (
                         <form onSubmit={handleSubmit} className="space-y-5">
                             <div className="space-y-4">
-                                <div>
-                                    <div className="space-y-3">
-                                        <div>
-                                            <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">아이디 <span className="text-slate-400 font-normal normal-case">(선택)</span></label>
-                                            <input
-                                                type="text"
-                                                value={loginId}
-                                                onChange={e => setLoginId(e.target.value)}
-                                                className="w-full p-4 rounded-xl bg-slate-50 border border-slate-200 focus:bg-white focus:border-primary-500 focus:ring-4 focus:ring-primary-500/10 outline-none transition-all font-semibold text-slate-800"
-                                                placeholder="아이디"
-                                                autoFocus
-                                            />
-                                        </div>
+                                <div className="space-y-3">
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">아이디 (선택)</label>
+                                        <input
+                                            type="text"
+                                            value={loginId}
+                                            onChange={e => setLoginId(e.target.value)}
+                                            className="w-full p-4 rounded-xl bg-slate-50 border border-slate-200 focus:bg-white focus:border-primary-500 outline-none transition-all font-semibold text-slate-800"
+                                            placeholder="아이디"
+                                            autoFocus
+                                        />
+                                    </div>
 
-                                        <div>
-                                            <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">닉네임 (표시이름) <span className="text-primary-500">*</span></label>
-                                            <input
-                                                type="text"
-                                                required
-                                                value={name}
-                                                onChange={e => setName(e.target.value)}
-                                                className="w-full p-4 rounded-xl bg-slate-50 border border-slate-200 focus:bg-white focus:border-primary-500 focus:ring-4 focus:ring-primary-500/10 outline-none transition-all font-semibold text-slate-800"
-                                                placeholder="닉네임"
-                                            />
-                                        </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">닉네임 (표시이름) <span className="text-primary-500">*</span></label>
+                                        <input
+                                            type="text"
+                                            required
+                                            value={name}
+                                            onChange={e => setName(e.target.value)}
+                                            className="w-full p-4 rounded-xl bg-slate-50 border border-slate-200 focus:bg-white focus:border-primary-500 outline-none transition-all font-semibold text-slate-800"
+                                            placeholder="닉네임"
+                                        />
+                                    </div>
 
-                                        <div>
-                                            <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">실명 <span className="text-slate-400 font-normal normal-case">(선택)</span></label>
-                                            <input
-                                                type="text"
-                                                value={memberName}
-                                                onChange={e => setMemberName(e.target.value)}
-                                                className="w-full p-4 rounded-xl bg-slate-50 border border-slate-200 focus:bg-white focus:border-primary-500 focus:ring-4 focus:ring-primary-500/10 outline-none transition-all font-semibold text-slate-800"
-                                                placeholder="실명"
-                                            />
-                                        </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">실명 (선택)</label>
+                                        <input
+                                            type="text"
+                                            value={memberName}
+                                            onChange={e => setMemberName(e.target.value)}
+                                            className="w-full p-4 rounded-xl bg-slate-50 border border-slate-200 focus:bg-white focus:border-primary-500 outline-none transition-all font-semibold text-slate-800"
+                                            placeholder="실명"
+                                        />
                                     </div>
                                 </div>
 
@@ -202,91 +202,127 @@ export default function UserForm({ onClose, editUser, preselectedParentId, restr
                                         </p>
                                     )}
                                 </div>
-                            </div>
 
-                            <div className="space-y-3">
-                                <div className="flex items-center justify-between">
-                                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">요율 설정 (Commission %)</label>
-                                    <span className="text-[10px] text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">소수점 가능</span>
+                                <div className="space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">요율 설정 (Commission %)</label>
+                                    </div>
+
+                                    <div className="grid grid-cols-3 gap-3">
+                                        <div className="space-y-1">
+                                            <label className={clsx("text-[10px] font-bold pl-1 transition-colors",
+                                                parentUser && parseFloat(casinoRate) > parentUser.casinoRate ? "text-red-600" : "text-blue-600"
+                                            )}>
+                                                카지노 (최대: {parentUser ? parentUser.casinoRate : '∞'})
+                                            </label>
+                                            <input
+                                                type="number"
+                                                required
+                                                step="0.1"
+                                                value={casinoRate}
+                                                onChange={e => setCasinoRate(e.target.value)}
+                                                className={clsx(
+                                                    "w-full p-3 rounded-xl border text-center font-bold outline-none transition-all",
+                                                    parentUser && parseFloat(casinoRate) > parentUser.casinoRate
+                                                        ? "border-red-300 bg-red-50 text-red-900"
+                                                        : "border-slate-200 text-blue-900"
+                                                )}
+                                                placeholder="0.0"
+                                            />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className={clsx("text-[10px] font-bold pl-1 transition-colors",
+                                                parentUser && parseFloat(slotRate) > parentUser.slotRate ? "text-red-600" : "text-purple-600"
+                                            )}>
+                                                슬롯 (최대: {parentUser ? parentUser.slotRate : '∞'})
+                                            </label>
+                                            <input
+                                                type="number"
+                                                required
+                                                step="0.1"
+                                                value={slotRate}
+                                                onChange={e => setSlotRate(e.target.value)}
+                                                className={clsx(
+                                                    "w-full p-3 rounded-xl border text-center font-bold outline-none transition-all",
+                                                    parentUser && parseFloat(slotRate) > parentUser.slotRate
+                                                        ? "border-red-300 bg-red-50 text-red-900"
+                                                        : "border-slate-200 text-purple-900"
+                                                )}
+                                                placeholder="0.0"
+                                            />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className={clsx("text-[10px] font-bold pl-1 transition-colors",
+                                                parentUser && parseFloat(losingRate) > parentUser.losingRate ? "text-red-600" : "text-rose-600"
+                                            )}>
+                                                루징 (최대: {parentUser ? parentUser.losingRate : '∞'})
+                                            </label>
+                                            <input
+                                                type="number"
+                                                required
+                                                step="0.1"
+                                                value={losingRate}
+                                                onChange={e => setLosingRate(e.target.value)}
+                                                className={clsx(
+                                                    "w-full p-3 rounded-xl border text-center font-bold outline-none transition-all",
+                                                    parentUser && parseFloat(losingRate) > parentUser.losingRate
+                                                        ? "border-red-300 bg-red-50 text-red-900"
+                                                        : "border-slate-200 text-rose-900"
+                                                )}
+                                                placeholder="0.0"
+                                            />
+                                        </div>
+                                    </div>
+                                    {isRateInvalid && (
+                                        <p className="text-xs text-red-600 font-bold bg-red-50 px-3 py-2 rounded-lg flex items-center gap-2">
+                                            <AlertCircle size={14} />
+                                            <span>요율이 상위 회원을 초과할 수 없습니다.</span>
+                                        </p>
+                                    )}
                                 </div>
 
-                                <div className="grid grid-cols-3 gap-3">
-                                    <div className="space-y-1">
-                                        <label className={clsx("text-[10px] font-bold pl-1 transition-colors",
-                                            parentUser && parseFloat(casinoRate) > parentUser.casinoRate ? "text-red-600" : "text-blue-600"
-                                        )}>
-                                            카지노 (최대: {parentUser ? parentUser.casinoRate : '∞'})
-                                        </label>
-                                        <input
-                                            type="number"
-                                            required
-                                            step="0.1"
-                                            value={casinoRate}
-                                            onChange={e => setCasinoRate(e.target.value)}
-                                            className={clsx(
-                                                "w-full p-3 rounded-xl border text-center font-bold focus:ring-2 outline-none transition-all",
-                                                parentUser && parseFloat(casinoRate) > parentUser.casinoRate
-                                                    ? "border-red-300 bg-red-50 text-red-900 focus:border-red-500 focus:ring-red-500/20"
-                                                    : "border-slate-200 text-blue-900 focus:border-blue-500 focus:ring-blue-500/20"
-                                            )}
-                                            placeholder="0.0"
-                                        />
-                                    </div>
-                                    <div className="space-y-1">
-                                        <label className={clsx("text-[10px] font-bold pl-1 transition-colors",
-                                            parentUser && parseFloat(slotRate) > parentUser.slotRate ? "text-red-600" : "text-purple-600"
-                                        )}>
-                                            슬롯 (최대: {parentUser ? parentUser.slotRate : '∞'})
-                                        </label>
-                                        <input
-                                            type="number"
-                                            required
-                                            step="0.1"
-                                            value={slotRate}
-                                            onChange={e => setSlotRate(e.target.value)}
-                                            className={clsx(
-                                                "w-full p-3 rounded-xl border text-center font-bold focus:ring-2 outline-none transition-all",
-                                                parentUser && parseFloat(slotRate) > parentUser.slotRate
-                                                    ? "border-red-300 bg-red-50 text-red-900 focus:border-red-500 focus:ring-red-500/20"
-                                                    : "border-slate-200 text-purple-900 focus:border-purple-500 focus:ring-purple-500/20"
-                                            )}
-                                            placeholder="0.0"
-                                        />
-                                    </div>
-                                    <div className="space-y-1">
-                                        <label className={clsx("text-[10px] font-bold pl-1 transition-colors",
-                                            parentUser && parseFloat(losingRate) > parentUser.losingRate ? "text-red-600" : "text-rose-600"
-                                        )}>
-                                            루징 (최대: {parentUser ? parentUser.losingRate : '∞'})
-                                        </label>
-                                        <input
-                                            type="number"
-                                            required
-                                            step="0.1"
-                                            value={losingRate}
-                                            onChange={e => setLosingRate(e.target.value)}
-                                            className={clsx(
-                                                "w-full p-3 rounded-xl border text-center font-bold focus:ring-2 outline-none transition-all",
-                                                parentUser && parseFloat(losingRate) > parentUser.losingRate
-                                                    ? "border-red-300 bg-red-50 text-red-900 focus:border-red-500 focus:ring-red-500/20"
-                                                    : "border-slate-200 text-rose-900 focus:border-rose-500 focus:ring-rose-500/20"
-                                            )}
-                                            placeholder="0.0"
-                                        />
+                                <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 flex justify-between items-center">
+                                    <span className="text-xs font-bold text-slate-500 uppercase">부여 등급</span>
+                                    <div className="text-lg font-black text-slate-800">
+                                        {calculatedLevel}
                                     </div>
                                 </div>
-                                {isRateInvalid && (
-                                    <p className="text-xs text-red-600 font-bold bg-red-50 px-3 py-2 rounded-lg flex items-center gap-2">
-                                        <AlertCircle size={14} />
-                                        <span>설정된 요율이 상위 회원의 요율을 초과할 수 없습니다.</span>
-                                    </p>
-                                )}
-                            </div>
 
-                            <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 flex justify-between items-center">
-                                <span className="text-xs font-bold text-slate-500 uppercase">부여 등급</span>
-                                <div className="text-lg font-black text-slate-800">
-                                    {calculatedLevel}
+                                <div className="space-y-3">
+                                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">메모 (선택사항)</label>
+                                    <div className={clsx(
+                                        "p-4 rounded-xl border-2 transition-colors duration-300",
+                                        memoColor === 'yellow' ? 'bg-yellow-50 border-yellow-100' :
+                                            memoColor === 'blue' ? 'bg-blue-50 border-blue-100' :
+                                                memoColor === 'green' ? 'bg-emerald-50 border-emerald-100' :
+                                                    memoColor === 'rose' ? 'bg-rose-50 border-rose-100' :
+                                                        'bg-purple-50 border-purple-100'
+                                    )}>
+                                        <textarea
+                                            value={memo}
+                                            onChange={e => setMemo(e.target.value)}
+                                            className="w-full h-24 bg-transparent border-none focus:ring-0 resize-none text-slate-800 placeholder:text-slate-300 font-medium text-sm leading-relaxed"
+                                            placeholder="이곳에 메모를 입력하세요..."
+                                        />
+                                        <div className="flex gap-2 mt-2 pt-2 border-t border-black/5">
+                                            {['yellow', 'blue', 'green', 'rose', 'purple'].map((c) => (
+                                                <button
+                                                    key={c}
+                                                    type="button"
+                                                    onClick={() => setMemoColor(c)}
+                                                    className={clsx(
+                                                        "w-6 h-6 rounded-full border-2 transition-all active:scale-90",
+                                                        memoColor === c ? "border-slate-800 scale-110 shadow-sm" : "border-transparent",
+                                                        c === 'yellow' ? 'bg-yellow-400' :
+                                                            c === 'blue' ? 'bg-blue-400' :
+                                                                c === 'green' ? 'bg-emerald-400' :
+                                                                    c === 'rose' ? 'bg-rose-400' :
+                                                                        'bg-purple-400'
+                                                    )}
+                                                />
+                                            ))}
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
 
@@ -294,9 +330,9 @@ export default function UserForm({ onClose, editUser, preselectedParentId, restr
                                 type="submit"
                                 disabled={!!isRateInvalid || !calculatedLevel}
                                 className={clsx(
-                                    "w-full font-bold py-4 rounded-xl shadow-lg transition-all flex justify-center items-center gap-2 text-lg",
+                                    "w-full font-bold py-4 rounded-xl shadow-lg transition-all flex justify-center items-center gap-2 text-lg mt-4",
                                     isRateInvalid || !calculatedLevel
-                                        ? "bg-slate-300 text-slate-500 shadow-none cursor-not-allowed"
+                                        ? "bg-slate-300 text-slate-500 cursor-not-allowed"
                                         : "bg-slate-900 text-white shadow-slate-900/20 active:scale-[0.98]"
                                 )}
                             >
@@ -305,8 +341,7 @@ export default function UserForm({ onClose, editUser, preselectedParentId, restr
                             </button>
                         </form>
                     )}
-
-                    <div className="h-6" />
+                    <div className="h-4" />
                 </div>
             </div>
         </>

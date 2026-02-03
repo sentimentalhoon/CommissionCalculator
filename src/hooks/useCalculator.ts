@@ -7,8 +7,7 @@ import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db as firestoreDb } from '../firebase';
 import { useSearchParams } from 'react-router-dom';
 
-// ===== 레벨 상수 (Level Constants) =====
-export const LEVELS = ['대마스터', '마스터', '부본사', '총판', '매장', '회원'];
+import { LEVELS } from '../constants/levels';
 
 export interface FlattenedUser extends User {
     depth: number;
@@ -137,8 +136,7 @@ export function useCalculator() {
     // ===== 핸들러 (Handlers) =====
     const handleMasterSelect = useCallback((id: string) => {
         setSelectedMasterId(id);
-        setInputs({});
-        setResults(null);
+        // Previously cleared inputs and results here, now preserving them as per user request
         setExpandedMasters(new Set());
     }, []);
 
@@ -175,9 +173,9 @@ export function useCalculator() {
             let totalLosing = 0;
 
             Object.values(inputs).forEach(inp => {
-                totalCasino += parseFloat(inp.c.replace(/,/g, '') || '0');
-                totalSlot += parseFloat(inp.s.replace(/,/g, '') || '0');
-                totalLosing += parseFloat(inp.l.replace(/,/g, '') || '0');
+                totalCasino += parseFloat((inp?.c || '0').replace(/,/g, ''));
+                totalSlot += parseFloat((inp?.s || '0').replace(/,/g, ''));
+                totalLosing += parseFloat((inp?.l || '0').replace(/,/g, ''));
             });
 
             const logData = {
@@ -205,9 +203,9 @@ export function useCalculator() {
 
             const batchInputs: BatchInput[] = [];
             Object.entries(inputs).forEach(([userId, val]) => {
-                const c = parseFloat(val.c.replace(/,/g, '') || '0');
-                const s = parseFloat(val.s.replace(/,/g, '') || '0');
-                const l = parseFloat(val.l.replace(/,/g, '') || '0');
+                const c = parseFloat((val?.c || '0').replace(/,/g, ''));
+                const s = parseFloat((val?.s || '0').replace(/,/g, ''));
+                const l = parseFloat((val?.l || '0').replace(/,/g, ''));
 
                 if (c > 0 || s > 0 || l > 0) {
                     batchInputs.push({

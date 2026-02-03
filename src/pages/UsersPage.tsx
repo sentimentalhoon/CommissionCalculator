@@ -4,10 +4,11 @@
 
 import { useEffect, useState, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { userService } from '../services/userService'; // Import userService
+import { userService } from '../services/userService';
 
 import { Plus, User as UserIcon, Trash2, Edit2, ChevronDown, ChevronRight, UserPlus, MoreVertical } from 'lucide-react';
 import UserForm from '../components/UserForm';
+import MemoModal from '../components/MemoModal';
 import clsx from 'clsx';
 import { LEVELS } from '../constants/levels';
 import type { User } from '../db';
@@ -24,13 +25,15 @@ const UserTreeItem = ({
     depth = 0,
     onEdit,
     onDelete,
-    onAddChild
+    onAddChild,
+    onMemo
 }: {
     node: UserNode;
     depth?: number;
     onEdit: (u: User) => void;
     onDelete: (id: string) => void;
     onAddChild: (id: string) => void;
+    onMemo: (u: User) => void;
 }) => {
     const [isExpanded, setIsExpanded] = useState(true);
     const [showActions, setShowActions] = useState(false);
@@ -47,6 +50,17 @@ const UserTreeItem = ({
             case '본사': return "bg-sky-50 border-sky-200 shadow-sky-100";
             case '부본사': return "bg-slate-50 border-slate-200 shadow-slate-100";
             default: return "bg-white border-slate-200";
+        }
+    };
+
+    const getMemoColorStyle = (color?: string) => {
+        switch (color) {
+            case 'yellow': return 'bg-yellow-400';
+            case 'blue': return 'bg-blue-400';
+            case 'green': return 'bg-emerald-400';
+            case 'rose': return 'bg-rose-400';
+            case 'purple': return 'bg-purple-400';
+            default: return 'bg-yellow-400';
         }
     };
 
@@ -117,11 +131,25 @@ const UserTreeItem = ({
                                         L <span className="font-bold">{node.losingRate}%</span>
                                     </span>
                                 </div>
+
+                                {node.memo && (
+                                    <div className="mt-2 p-2 bg-white/40 rounded-lg border border-black/5 text-[10px] text-slate-600 italic line-clamp-2 leading-relaxed">
+                                        "{node.memo}"
+                                    </div>
+                                )}
                             </div>
                         </div>
 
-                        <div className="text-slate-300">
-                            <MoreVertical size={16} />
+                        <div className="flex flex-col items-end gap-1">
+                            <div className="text-slate-300">
+                                <MoreVertical size={16} />
+                            </div>
+                            {node.memo && (
+                                <div className={clsx(
+                                    "w-3 h-3 rounded-full border border-white shadow-sm animate-pulse",
+                                    getMemoColorStyle(node.memoColor)
+                                )} />
+                            )}
                         </div>
                     </div>
 
@@ -138,6 +166,15 @@ const UserTreeItem = ({
                                     <UserPlus size={14} /> 하부추가
                                 </button>
                             )}
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    onMemo(node);
+                                }}
+                                className="flex items-center gap-1 px-3 py-1.5 bg-amber-50 text-amber-700 rounded-lg text-xs font-bold active:bg-amber-100"
+                            >
+                                <Plus size={14} className="rotate-45" /> 메모
+                            </button>
                             <button
                                 onClick={(e) => {
                                     e.stopPropagation();
@@ -173,6 +210,7 @@ const UserTreeItem = ({
                                 onEdit={onEdit}
                                 onDelete={onDelete}
                                 onAddChild={onAddChild}
+                                onMemo={onMemo}
                             />
                         ))}
                     </div>
@@ -186,16 +224,18 @@ export default function UsersPage() {
     const { } = useAuth()!;
     const [users, setUsers] = useState<User[]>([]);
 
-    // Firestore 실시간 리스너 사용 (Use Firestore Realtime Listener)
     useEffect(() => {
-        // 이름순 정렬
         const q = query(collection(firestoreDb, "users"), orderBy('name'));
 
         const unsubscribe = onSnapshot(q, (querySnapshot) => {
             const usersData: User[] = [];
             querySnapshot.forEach((doc) => {
-                // ID를 문자열로 사용 (Use ID as string)
-                usersData.push({ id: doc.id, ...doc.data() } as User);
+                const data = doc.data();
+                usersData.push({
+                    ...data,
+                    id: doc.id,
+                    parentId: data.parentId ? String(data.parentId) : null
+                } as User);
             });
             setUsers(usersData);
         });
@@ -203,20 +243,18 @@ export default function UsersPage() {
     }, []);
 
     const [showForm, setShowForm] = useState(false);
+    const [showMemoModal, setShowMemoModal] = useState(false);
     const [editingUser, setEditingUser] = useState<User | undefined>(undefined);
-    const [newParentId, setNewParentId] = useState<string | undefined>(undefined); // Changed to string
+    const [newParentId, setNewParentId] = useState<string | undefined>(undefined);
 
-    const handleDelete = async (id: string) => { // Changed to string
-        // Check for subordinates
+    const handleDelete = async (id: string) => {
         const hasChildren = users?.some(u => u.parentId === id);
-
         if (hasChildren) {
-            alert('하부 회원이 존재하는 회원은 삭제할 수 없습니다.\\n먼저 모든 하부 회원을 삭제해주세요.');
+            alert('하부 회원이 존재하는 회원은 삭제할 수 없습니다.\n먼저 모든 하부 회원을 삭제해주세요.');
             return;
         }
-
         if (confirm('정말로 이 회원을 삭제하시겠습니까?')) {
-            await userService.deleteUser(id); // Use userService
+            await userService.deleteUser(id);
         }
     };
 
@@ -232,18 +270,37 @@ export default function UsersPage() {
         setShowForm(true);
     }
 
-    const handleAddChild = (parentId: string) => { // Changed to string
+    const handleAddChild = (parentId: string) => {
         setNewParentId(parentId);
         setEditingUser(undefined);
         setShowForm(true);
     }
 
+    const handleOpenMemo = (user: User) => {
+        setEditingUser(user);
+        setShowMemoModal(true);
+    };
+
+    const handleSaveMemo = async (memo: string, color: string) => {
+        if (editingUser?.id) {
+            try {
+                console.log("Updating memo for user:", { id: editingUser.id, memo, color });
+                await userService.updateUser(editingUser.id, {
+                    memo: memo || undefined,
+                    memoColor: color || undefined
+                });
+            } catch (error: any) {
+                console.error("Failed to update memo full error:", error);
+                alert(`메모 저장 중 오류가 발생했습니다: ${error.message || '알 수 없는 오류'}`);
+            }
+        }
+    };
+
     const [searchQuery, setSearchQuery] = useState('');
 
     const userTree = useMemo(() => {
         if (!users) return [];
-
-        const userMap = new Map<string, UserNode>(); // Changed Key to string
+        const userMap = new Map<string, UserNode>();
         const roots: UserNode[] = [];
 
         users.forEach(u => {
@@ -253,7 +310,6 @@ export default function UsersPage() {
         users.forEach(u => {
             const node = userMap.get(u.id!);
             if (!node) return;
-
             if (u.parentId) {
                 const parent = userMap.get(u.parentId);
                 if (parent) {
@@ -266,7 +322,6 @@ export default function UsersPage() {
             }
         });
 
-        // Compute Total Descendants
         const computeDescendants = (node: UserNode): number => {
             let count = node.children.length;
             node.children.forEach(child => {
@@ -275,31 +330,24 @@ export default function UsersPage() {
             node.totalDescendants = count;
             return count;
         };
-
         roots.forEach(computeDescendants);
-
         return roots;
     }, [users]);
 
-    // Search Filtering
     const filteredTree = useMemo(() => {
         if (!searchQuery) return userTree;
-
         const filterNode = (node: UserNode): UserNode | null => {
             const matches =
                 node.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                 (node.loginId && node.loginId.toLowerCase().includes(searchQuery.toLowerCase()));
-
             const filteredChildren = node.children
                 .map(filterNode)
                 .filter((child): child is UserNode => child !== null);
-
             if (matches || filteredChildren.length > 0) {
                 return { ...node, children: filteredChildren };
             }
             return null;
         };
-
         return userTree
             .map(filterNode)
             .filter((node): node is UserNode => node !== null);
@@ -340,6 +388,7 @@ export default function UsersPage() {
                             onEdit={handleEdit}
                             onDelete={handleDelete}
                             onAddChild={handleAddChild}
+                            onMemo={handleOpenMemo}
                         />
                     ))
                 ) : (
@@ -361,6 +410,15 @@ export default function UsersPage() {
                     restrictToTopLevel={!editingUser && !newParentId && users.length === 0}
                 />
             )}
+
+            <MemoModal
+                isOpen={showMemoModal}
+                onClose={() => setShowMemoModal(false)}
+                onSave={handleSaveMemo}
+                initialMemo={editingUser?.memo}
+                initialColor={editingUser?.memoColor}
+                userName={editingUser?.name || ''}
+            />
         </div>
     );
 }

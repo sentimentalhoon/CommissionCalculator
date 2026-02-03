@@ -96,6 +96,7 @@ export default function CalculatorPage() {
                         <ResultSection
                             results={results}
                             targetMembers={targetMembers}
+                            expandedMasters={expandedMasters}
                             onDownloadPDF={handleDownloadPDF}
                         />
                     </div>

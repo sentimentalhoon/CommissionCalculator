@@ -2,11 +2,13 @@ import { DollarSign, Download, ChevronDown, ChevronRight } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useState } from 'react';
 import type { CalculationResult } from '../../db';
+import { LEVELS } from '../../constants/levels';
 import type { FlattenedUser } from '../../hooks/useCalculator';
 
 interface ResultSectionProps {
     results: CalculationResult[] | null;
     targetMembers: FlattenedUser[];
+    expandedMasters: Set<string>;
     onDownloadPDF: () => void;
 }
 
@@ -31,13 +33,53 @@ interface UserResultData {
     bySub: Record<string, SubBreakdown>; // Grouped by fromUserName
 }
 
-export function ResultSection({ results, targetMembers, onDownloadPDF }: ResultSectionProps) {
+const getLevelColor = (level: string) => {
+    switch (level) {
+        case '대마스터': return 'border-amber-200 bg-amber-50 text-amber-700';
+        case '마스터': return 'border-emerald-200 bg-emerald-50 text-emerald-700';
+        case '본사': return 'border-blue-200 bg-blue-50 text-blue-700';
+        case '부본사': return 'border-purple-200 bg-purple-50 text-purple-700';
+        default: return 'border-slate-200 bg-slate-50 text-slate-600';
+    }
+};
+
+export function ResultSection({ results, targetMembers, expandedMasters, onDownloadPDF }: ResultSectionProps) {
     const [expandedUsers, setExpandedUsers] = useState<Set<string>>(new Set());
 
     if (!results) return null;
 
     // Aggregate results logic
+    // [FILTER] Only show members belonging to the active (expanded) master
+    const activeMasterId = Array.from(expandedMasters)[0];
+
+    const filteredTargetMembers = activeMasterId
+        ? targetMembers.filter(u => {
+            // 1. 대마스터는 항상 포함 (Always include Grand Master)
+            if (u.level === LEVELS[0]) return true;
+            // 2. 선택된 마스터 본인 포함 (Include selected Master)
+            const uId = String(u.id);
+            if (uId === activeMasterId) return true;
+
+            // 3. 선택된 마스터의 하부 회원 포함 (Recursive check for subordinates)
+            const isDescendant = (user: FlattenedUser): boolean => {
+                if (!user.parentId) return false;
+                const pId = String(user.parentId);
+                if (pId === activeMasterId) return true;
+
+                // 상위로 올라가며 확인 (Find parent in the same target list)
+                const parent = targetMembers.find(prev => String(prev.id) === pId);
+                return parent ? isDescendant(parent) : false;
+            };
+
+            return isDescendant(u);
+        })
+        : [];
+
     const aggregated = results.reduce((acc, curr) => {
+        // [FILTER] Only aggregate results for filtered members
+        const currUserIdStr = String(curr.userId);
+        if (!filteredTargetMembers.some(m => String(m.id) === currUserIdStr)) return acc;
+
         if (!acc[curr.userId]) {
             acc[curr.userId] = {
                 userId: curr.userId,
@@ -137,7 +179,7 @@ export function ResultSection({ results, targetMembers, onDownloadPDF }: ResultS
 
                 {/* Results List (1-3-1 Layout) */}
                 <div className="p-4 space-y-3">
-                    {targetMembers.map((u) => {
+                    {filteredTargetMembers.map((u) => {
                         const r = aggregated[u.id!] || {
                             userId: u.id!,
                             userName: u.name,
@@ -166,7 +208,10 @@ export function ResultSection({ results, targetMembers, onDownloadPDF }: ResultS
                                             <span className="font-bold text-slate-800 text-base">
                                                 {u.name}
                                             </span>
-                                            <span className="text-[10px] px-1.5 py-0.5 rounded border bg-white border-slate-200 text-slate-400 font-mono">
+                                            <span className={clsx(
+                                                "text-[10px] px-1.5 py-0.5 rounded border font-bold uppercase tracking-wide",
+                                                getLevelColor(u.level || '')
+                                            )}>
                                                 {u.level}
                                             </span>
                                         </div>
@@ -187,20 +232,29 @@ export function ResultSection({ results, targetMembers, onDownloadPDF }: ResultS
                                     {/* [3] Row: Amount Summary (C / S / L) */}
                                     <div className="grid grid-cols-3 divide-x divide-slate-100">
                                         {/* Casino */}
-                                        <div className="p-2 flex flex-col gap-1 items-center">
-                                            <div className="text-[10px] font-bold text-blue-400 uppercase">Casino</div>
+                                        <div className="p-2 flex flex-col gap-0.5 items-center">
+                                            <div className="text-[10px] font-bold text-blue-400 uppercase flex items-center gap-1">
+                                                <span>Casino</span>
+                                                <span className="text-[9px] text-slate-400 font-normal">({u.casinoRate}%)</span>
+                                            </div>
                                             <div className="font-bold text-slate-700">{Math.floor(r.casino).toLocaleString()}</div>
                                         </div>
 
                                         {/* Slot */}
-                                        <div className="p-2 flex flex-col gap-1 items-center">
-                                            <div className="text-[10px] font-bold text-purple-400 uppercase">Slot</div>
+                                        <div className="p-2 flex flex-col gap-0.5 items-center">
+                                            <div className="text-[10px] font-bold text-purple-400 uppercase flex items-center gap-1">
+                                                <span>Slot</span>
+                                                <span className="text-[9px] text-slate-400 font-normal">({u.slotRate}%)</span>
+                                            </div>
                                             <div className="font-bold text-slate-700">{Math.floor(r.slot).toLocaleString()}</div>
                                         </div>
 
                                         {/* Losing */}
-                                        <div className="p-2 flex flex-col gap-1 items-center">
-                                            <div className="text-[10px] font-bold text-rose-400 uppercase">Losing</div>
+                                        <div className="p-2 flex flex-col gap-0.5 items-center">
+                                            <div className="text-[10px] font-bold text-rose-400 uppercase flex items-center gap-1">
+                                                <span>Losing</span>
+                                                <span className="text-[9px] text-slate-400 font-normal">({u.losingRate}%)</span>
+                                            </div>
                                             <div className="font-bold text-slate-700">{Math.floor(r.losing).toLocaleString()}</div>
                                         </div>
                                     </div>

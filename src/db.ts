@@ -68,6 +68,14 @@ export interface User {
 
     // 등급 이름
     level?: string;
+
+    // 메모 (선택사항)
+    // Memo (optional)
+    memo?: string;
+
+    // 메모 색상 (선택사항: yellow, blue, green, rose, purple)
+    // Memo color
+    memoColor?: string;
 }
 
 /**

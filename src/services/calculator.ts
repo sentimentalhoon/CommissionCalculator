@@ -192,6 +192,17 @@ export async function calculateBatchCommission(
                         `[수익] ${currSlotFee.toLocaleString()} - ${prevSlotFee.toLocaleString()} = ${profitSlot.toLocaleString()}`,
                     fromUserName: prevUser.name
                 });
+            } else if (rollingSlot > 0) {
+                results.push({
+                    userId: upper.id!,
+                    userName: upper.name,
+                    role: 'upper',
+                    source: 'slot',
+                    amount: 0,
+                    breakdown: `[하부] 요율 ${prevUser.slotRate}% vs [본인] 요율 ${upper.slotRate}% (동일하거나 역마진)\n` +
+                        `[수익] 0`,
+                    fromUserName: prevUser.name
+                });
             }
 
             // 3. 루징 수익 (Losing Share)
