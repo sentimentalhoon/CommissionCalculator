@@ -106,20 +106,6 @@ export async function calculateBatchCommission(
             });
         }
 
-        // Leaf user's losing commission (their rate percentage of the input losing amount)
-        if (inputLosingAmt > 0 && leafUser.losingRate > 0) {
-            const leafLosingCommission = inputLosingAmt * (leafUser.losingRate / 100);
-            results.push({
-                userId: leafUser.id!,
-                userName: leafUser.name,
-                role: 'self',
-                source: 'losing',
-                amount: leafLosingCommission,
-                breakdown: `[루징 금액] ${inputLosingAmt.toLocaleString()}\n[본인 요율] ${leafUser.losingRate}%\n[본인 수익] ${leafLosingCommission.toLocaleString()}`,
-                fromUserName: '본인'
-            });
-        }
-
         // === 3. 상향식 수익 계산 (Bottom-Up Profit Calculation) ===
         // lineage: 직속상위 -> ... -> 대마스터 순서
         const lineage: User[] = [];
@@ -132,6 +118,53 @@ export async function calculateBatchCommission(
             temp = parent;
         }
 
+        // Leaf user's losing commission (their rate percentage of the input losing amount AFTER deducting UPPER MARGIN)
+        if (inputLosingAmt > 0 && leafUser.losingRate > 0) {
+            // 공제금 계산: 바로 윗 상부마스터가 가져간 '실제 수익(마진)'을 공제
+            // Deduction: Immediate Upper's Profit (Margin)
+            let deduction = 0;
+            let deductionDesc = '';
+
+            const parent = lineage.length > 0 ? lineage[0] : null;
+
+            if (parent) {
+                // 상부 수익(마진) = 롤링 * (상부 요율 - 본인 요율)
+                const marginCasinoRate = Math.max(0, parent.casinoRate - leafUser.casinoRate);
+                const marginSlotRate = Math.max(0, parent.slotRate - leafUser.slotRate);
+
+                const parentCasinoProfit = rollingCasino * (marginCasinoRate / 100);
+                const parentSlotProfit = rollingSlot * (marginSlotRate / 100);
+
+                deduction = parentCasinoProfit + parentSlotProfit;
+                deductionDesc = `[공제] 상부(${parent.name}) 실제알값(마진): ${deduction.toLocaleString()} (C:${parentCasinoProfit.toLocaleString()} + S:${parentSlotProfit.toLocaleString()})\n` +
+                    ` - 카지노 마진: ${marginCasinoRate.toFixed(2)}% (${parent.casinoRate}% - ${leafUser.casinoRate}%)\n` +
+                    ` - 슬롯 마진: ${marginSlotRate.toFixed(2)}% (${parent.slotRate}% - ${leafUser.slotRate}%)`;
+            } else {
+                // 상부가 없는 경우 (최상위), 공제 없음
+                deduction = 0;
+                deductionDesc = `[공제] 상부 없음 (공제 제외)`;
+            }
+
+            // 차감후 루징금 (Net Losing Amount)
+            const netLosingBase = inputLosingAmt - deduction;
+
+            // 본인 루징 수익 = 공제 후 금액 * 본인 루징 요율
+            const leafLosingCommission = netLosingBase * (leafUser.losingRate / 100);
+
+            results.push({
+                userId: leafUser.id!,
+                userName: leafUser.name,
+                role: 'self',
+                source: 'losing',
+                amount: leafLosingCommission,
+                breakdown: `[입력] 루징 금액: ${inputLosingAmt.toLocaleString()}\n` +
+                    `${deductionDesc}\n` +
+                    `[차감후 루징금] ${netLosingBase.toLocaleString()}\n` +
+                    `[본인 요율] ${leafUser.losingRate}%\n` +
+                    `[본인 수익] ${leafLosingCommission.toLocaleString()}`,
+                fromUserName: '본인'
+            });
+        }
 
 
 

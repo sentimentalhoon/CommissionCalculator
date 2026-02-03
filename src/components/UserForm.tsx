@@ -77,17 +77,32 @@ export default function UserForm({ onClose, editUser, preselectedParentId, restr
             memoColor: memoColor || null
         };
 
-        // Remove undefined/null if any to be safe, though Firestore accepts null
-        Object.keys(userData).forEach(key => (userData[key] === undefined) && delete userData[key]);
+        // Explicitly map optional fields to null if undefined/empty
+        // Firestore doesn't support 'undefined'
+        const cleanUserData = {
+            ...userData,
+            memo: memo ?? null,
+            memoColor: memoColor ?? null,
+            loginId: loginId ?? null,
+            memberName: memberName ?? null,
+            parentId: parentId ?? null,
+        };
+
+        // Final safety check: remove any remaining undefined keys
+        Object.keys(cleanUserData).forEach(key => {
+            if (cleanUserData[key] === undefined) {
+                delete cleanUserData[key];
+            }
+        });
 
         console.log("Saving user data:", { id: editUser?.id, userData });
 
         try {
             if (editUser && editUser.id) {
                 // Ensure ID is treated as string (defensive)
-                await userService.updateUser(String(editUser.id).trim(), userData);
+                await userService.updateUser(String(editUser.id).trim(), cleanUserData);
             } else {
-                await userService.addUser(userData);
+                await userService.addUser(cleanUserData);
             }
             handleClose();
         } catch (error: any) {
