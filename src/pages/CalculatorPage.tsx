@@ -50,6 +50,7 @@ export default function CalculatorPage() {
             if (currentUser) {
                 // Use userService instead of Dexie
                 const allUsers = await userService.getAllUsers();
+                console.log("📥 Loaded users:", allUsers.length);
                 setUsers(allUsers);
             }
         };
@@ -126,10 +127,14 @@ export default function CalculatorPage() {
 
     // 선택된 대마스터 하위의 모든 회원 (All descendants of selected Grand Master)
     const targetMembers = useMemo(() => {
+        console.log("🔄 Calculation starting. selectedMasterId:", selectedMasterId, typeof selectedMasterId);
         if (!selectedMasterId) return [];
 
         const result: FlattenedUser[] = [];
-        const master = users.find(u => u.id === selectedMasterId);
+        // ID 비교 시 문자열 변환 (Convert to string for ID comparison)
+        const master = users.find(u => String(u.id) === String(selectedMasterId));
+
+        console.log("👤 Master found:", master?.name, master?.id);
 
         if (master) {
             // 자식 노드 맵 생성 (ParentId -> Children List)
@@ -145,24 +150,29 @@ export default function CalculatorPage() {
                 }
             });
 
+            console.log(`🗺️ Children Map constructed with ${childrenMap.size} parents.`);
+
             // 재귀적으로 하위 회원 찾기 (Recursive find)
             const findChildren = (parentId: string, depth: number) => {
-                const pid = parentId.trim();
+                const pid = String(parentId).trim();
                 const children = childrenMap.get(pid) || [];
+
+                console.log(`🔎 Finding children for ${pid} (Depth ${depth}): Found ${children.length}`);
 
                 // 이름순 정렬
                 children.sort((a, b) => a.name.localeCompare(b.name));
 
                 children.forEach(child => {
                     result.push({ ...child, depth });
-                    if (child.id) findChildren(child.id, depth + 1);
+                    if (child.id) findChildren(String(child.id), depth + 1);
                 });
             };
 
             result.push({ ...master, depth: 0 });
-            if (master.id) findChildren(master.id, 1);
+            if (master.id) findChildren(String(master.id), 1);
         }
 
+        console.log("✅ Final targetMembers count:", result.length);
         return result;
     }, [selectedMasterId, users]);
 
@@ -462,10 +472,11 @@ export default function CalculatorPage() {
 
                                 {/* 마스터 목록 (Masters List) - 접기/펼치기 가능 */}
                                 {masters.map(master => {
-                                    const isExpanded = expandedMasters.has(master.id!);
-                                    const subordinates = getSubordinates(master.id!);
-                                    const masterTotals = getMasterTotals(master.id!);
-                                    const masterInp = inputs[master.id!] || { c: '', s: '', l: '' };
+                                    const strMasterId = String(master.id!);
+                                    const isExpanded = expandedMasters.has(strMasterId);
+                                    const subordinates = getSubordinates(strMasterId);
+                                    const masterTotals = getMasterTotals(strMasterId);
+                                    const masterInp = inputs[strMasterId] || { c: '', s: '', l: '' };
 
                                     return (
                                         <div key={master.id}>
@@ -475,7 +486,7 @@ export default function CalculatorPage() {
                                                     "p-4 cursor-pointer transition-colors",
                                                     isExpanded ? "bg-emerald-50/50" : "bg-white hover:bg-slate-50"
                                                 )}
-                                                onClick={() => toggleMaster(master.id!)}
+                                                onClick={() => toggleMaster(strMasterId)}
                                             >
                                                 <div className="flex items-center justify-between mb-3">
                                                     <div className="flex items-center gap-2 overflow-hidden">
@@ -524,7 +535,7 @@ export default function CalculatorPage() {
                                                                         inputMode="decimal"
                                                                         placeholder="0"
                                                                         value={masterInp[field as 'c' | 's' | 'l'] || ''}
-                                                                        onChange={e => handleInputChange(master.id!, field as 'c' | 's' | 'l', e.target.value)}
+                                                                        onChange={e => handleInputChange(strMasterId, field as 'c' | 's' | 'l', e.target.value)}
                                                                         disabled={!isLeaf}
                                                                         className={clsx(
                                                                             "w-full pl-12 pr-1 py-2 border rounded-lg font-bold outline-none text-sm transition-all text-right",
