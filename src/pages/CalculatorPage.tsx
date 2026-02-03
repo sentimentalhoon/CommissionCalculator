@@ -136,7 +136,8 @@ export default function CalculatorPage() {
             const childrenMap = new Map<string, User[]>();
             users.forEach(u => {
                 if (u.parentId) {
-                    const pid = u.parentId.trim();
+                    // parentId가 숫자일 수도 있으므로 문자열로 변환 (parentId might be number, convert to string)
+                    const pid = String(u.parentId).trim();
                     if (!childrenMap.has(pid)) {
                         childrenMap.set(pid, []);
                     }
@@ -368,10 +369,13 @@ export default function CalculatorPage() {
                                 // 상위 체인을 따라 올라가면서 해당 마스터에 속하는지 확인
                                 let current = u;
                                 while (current.parentId) {
-                                    if (current.parentId === masterId) return true;
-                                    const parent = targetMembers.find(p => p.id === current.parentId);
+                                    // 문자열로 변환하여 비교 (Convert to string for comparison)
+                                    if (String(current.parentId) === masterId) return true;
+
+                                    // 부모 찾기시에도 문자열 ID 비교 (Find parent using string ID)
+                                    const parent = targetMembers.find(p => String(p.id) === String(current.parentId));
                                     if (!parent) break;
-                                    if (parent.level === LEVELS[1]) return parent.id === masterId;
+                                    if (parent.level === LEVELS[1]) return String(parent.id) === masterId;
                                     current = parent;
                                 }
                                 return false;
@@ -544,7 +548,8 @@ export default function CalculatorPage() {
 
                                                 // 최하위 판별 (현재 리스트 내에서 이 회원을 부모로 두는 회원이 없으면 최하위)
                                                 // 주의: targetMembers는 선택된 마스터의 하위 조직도 전체임.
-                                                const isLeaf = !targetMembers.some(m => m.parentId === sub.id);
+                                                // 비교 시 문자열 변환 필수
+                                                const isLeaf = !targetMembers.some(m => String(m.parentId) === String(sub.id));
 
                                                 return (
                                                     <div key={sub.id} className="p-4 bg-white hover:bg-slate-50 border-t border-slate-50">
@@ -596,6 +601,7 @@ export default function CalculatorPage() {
                                 })}
                             </div>
                         );
+
                     })()}
                 </div>
 
