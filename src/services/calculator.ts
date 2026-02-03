@@ -80,8 +80,8 @@ export async function calculateBatchCommission(
             }
         }
 
-        // === 2. Leaf User's Input Amounts (Display in Results) ===
-        // Add the leaf user's own input amounts to results
+        // === 2. Leaf User's Own Commission (Display in Results) ===
+        // Leaf user receives their own casino/slot fees and their share of losing
         if (inputCasinoFee > 0 && leafUser.casinoRate > 0) {
             results.push({
                 userId: leafUser.id!,
@@ -89,7 +89,7 @@ export async function calculateBatchCommission(
                 role: 'self',
                 source: 'casino',
                 amount: inputCasinoFee,
-                breakdown: `[입력] 카지노 수수료: ${inputCasinoFee.toLocaleString()}\n[요율] ${leafUser.casinoRate}%`,
+                breakdown: `[본인 수수료] ${inputCasinoFee.toLocaleString()}\n[요율] ${leafUser.casinoRate}%`,
                 fromUserName: '본인'
             });
         }
@@ -101,19 +101,21 @@ export async function calculateBatchCommission(
                 role: 'self',
                 source: 'slot',
                 amount: inputSlotFee,
-                breakdown: `[입력] 슬롯 수수료: ${inputSlotFee.toLocaleString()}\n[요율] ${leafUser.slotRate}%`,
+                breakdown: `[본인 수수료] ${inputSlotFee.toLocaleString()}\n[요율] ${leafUser.slotRate}%`,
                 fromUserName: '본인'
             });
         }
 
-        if (inputLosingAmt > 0) {
+        // Leaf user's losing commission (their rate percentage of the input losing amount)
+        if (inputLosingAmt > 0 && leafUser.losingRate > 0) {
+            const leafLosingCommission = inputLosingAmt * (leafUser.losingRate / 100);
             results.push({
                 userId: leafUser.id!,
                 userName: leafUser.name,
                 role: 'self',
                 source: 'losing',
-                amount: inputLosingAmt,
-                breakdown: `[입력] 루징 금액: ${inputLosingAmt.toLocaleString()}`,
+                amount: leafLosingCommission,
+                breakdown: `[루징 금액] ${inputLosingAmt.toLocaleString()}\n[본인 요율] ${leafUser.losingRate}%\n[본인 수익] ${leafLosingCommission.toLocaleString()}`,
                 fromUserName: '본인'
             });
         }
