@@ -25,7 +25,7 @@ import { useState, useMemo, useEffect } from 'react';
 
 // ===== Firebase Firestore =====
 import { db as firestoreDb } from '../firebase';
-import { collection, onSnapshot, query, addDoc } from 'firebase/firestore';
+import { collection, onSnapshot, query, addDoc, doc, getDoc } from 'firebase/firestore';
 
 // ===== 타입 정의 (Type definitions) =====
 import type { User, CalculationResult } from '../db';
@@ -41,7 +41,7 @@ import html2canvas from 'html2canvas';
 
 // ===== 기타 (Others) =====
 import clsx from 'clsx';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { LEVELS } from '../constants/levels';
 
 // Helper to flatten tree for table display with depth
@@ -98,6 +98,48 @@ export default function CalculatorPage() {
     });
 
     const [results, setResults] = useState<CalculationResult[] | null>(null);
+
+    // ===== URL 파라미터로 정산 기록 불러오기 (Load log from URL params) =====
+    const [searchParams, setSearchParams] = useSearchParams();
+    const logIdParam = searchParams.get('logId');
+
+    // logId가 URL에 있으면 해당 기록을 Firestore에서 불러옴
+    // If logId exists in URL, load that log from Firestore
+    useEffect(() => {
+        const loadLogData = async (logId: string) => {
+            try {
+                const docRef = doc(firestoreDb, "logs", logId);
+                const docSnap = await getDoc(docRef);
+
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+
+                    // 저장된 입력값 복원 (Restore saved inputs)
+                    if (data.selectedMasterId) {
+                        setSelectedMasterId(data.selectedMasterId.toString());
+                    }
+                    if (data.inputs) {
+                        setInputs(data.inputs);
+                    }
+
+                    // URL에서 logId 파라미터 제거 (일회성 로드)
+                    // Remove logId from URL (one-time load)
+                    setSearchParams({});
+
+                    alert('정산 기록을 불러왔습니다. 값을 수정하거나 다시 계산할 수 있습니다.');
+                } else {
+                    alert('해당 정산 기록을 찾을 수 없습니다.');
+                }
+            } catch (error) {
+                console.error('기록 불러오기 실패:', error);
+                alert('기록을 불러오는 데 실패했습니다.');
+            }
+        };
+
+        if (logIdParam) {
+            loadLogData(logIdParam);
+        }
+    }, [logIdParam, setSearchParams]);
 
     // ===== 자동 저장: selectedMasterId 변경 시 localStorage에 저장 =====
     // Auto-save: Save to localStorage when selectedMasterId changes
@@ -229,13 +271,16 @@ export default function CalculatorPage() {
             totalL += parseAmount(inp.l);
         });
 
-        // Save to Firestore
+        // Save to Firestore (정산 기록 저장 - 불러오기 기능용 inputs도 같이 저장)
         await addDoc(collection(firestoreDb, "logs"), {
             date: new Date(),
             casinoRolling: totalC,
             slotRolling: totalS,
             losingAmount: totalL,
-            results: results
+            results: results,
+            // 불러오기 기능용 필드 (For restore feature)
+            selectedMasterId: parseInt(selectedMasterId),
+            inputs: inputs
         });
 
         alert('저장되었습니다!');

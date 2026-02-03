@@ -29,12 +29,19 @@ import type { CalculationLog } from '../db';
 import { format } from 'date-fns';
 
 // 아이콘 (Icons)
-import { TrendingUp, Users, History } from 'lucide-react';
+import { TrendingUp, Users, History, RefreshCw } from 'lucide-react';
+
+// 라우팅 (Routing) - 불러오기 기능용
+import { useNavigate } from 'react-router-dom';
 
 export default function Dashboard() {
     const [userCount, setUserCount] = useState(0);
-    const [logs, setLogs] = useState<CalculationLog[]>([]);
+    // docId를 포함하는 확장 타입 (Extended type including docId for restore)
+    const [logs, setLogs] = useState<(CalculationLog & { docId: string })[]>([]);
     const [logCount, setLogCount] = useState(0);
+
+    // 불러오기 기능용 navigate (Navigate for restore feature)
+    const navigate = useNavigate();
 
     // Fetch users count from Firestore
     useEffect(() => {
@@ -49,17 +56,21 @@ export default function Dashboard() {
     useEffect(() => {
         const q = query(collection(firestoreDb, "logs"), orderBy("date", "desc"), limit(5));
         const unsubscribe = onSnapshot(q, (querySnapshot) => {
-            const logsData: CalculationLog[] = [];
-            querySnapshot.forEach((doc) => {
-                const data = doc.data();
+            const logsData: (CalculationLog & { docId: string })[] = [];
+            querySnapshot.forEach((docSnap) => {
+                const data = docSnap.data();
                 logsData.push({
-                    id: parseInt(doc.id) || Date.now(),
+                    id: parseInt(docSnap.id) || Date.now(),
+                    docId: docSnap.id, // Firestore 문서 ID 저장 (for restore)
                     date: data.date?.toDate ? data.date.toDate() : new Date(data.date),
                     casinoRolling: data.casinoRolling || 0,
                     slotRolling: data.slotRolling || 0,
                     losingAmount: data.losingAmount || 0,
-                    results: data.results || []
-                } as CalculationLog);
+                    results: data.results || [],
+                    // 불러오기 가능 여부 확인용 (Check if restore is available)
+                    selectedMasterId: data.selectedMasterId,
+                    inputs: data.inputs
+                } as CalculationLog & { docId: string });
             });
             setLogs(logsData);
             setLogCount(logsData.length); // For now, show count of fetched logs
@@ -109,8 +120,22 @@ export default function Dashboard() {
                                     <div className="text-sm font-bold text-slate-800">
                                         {format(log.date, 'MMM d, yyyy h:mm a')}
                                     </div>
-                                    <div className="text-primary-600 font-bold bg-primary-50 px-2 py-0.5 rounded text-sm">
-                                        Total: ${((log.casinoRolling || 0) + (log.slotRolling || 0) + (log.losingAmount || 0)).toLocaleString()}
+                                    <div className="flex items-center gap-2">
+                                        {/* 불러오기 버튼 - inputs이 있는 경우에만 표시 */}
+                                        {/* Load button - only show if inputs are saved */}
+                                        {log.inputs && (
+                                            <button
+                                                onClick={() => navigate(`/calculator?logId=${log.docId}`)}
+                                                className="flex items-center gap-1 text-xs text-primary-600 hover:text-primary-800 bg-primary-50 hover:bg-primary-100 px-2 py-1 rounded transition-colors"
+                                                title="이 기록을 정산 페이지로 불러오기"
+                                            >
+                                                <RefreshCw size={12} />
+                                                불러오기
+                                            </button>
+                                        )}
+                                        <div className="text-primary-600 font-bold bg-primary-50 px-2 py-0.5 rounded text-sm">
+                                            Total: ${((log.casinoRolling || 0) + (log.slotRolling || 0) + (log.losingAmount || 0)).toLocaleString()}
+                                        </div>
                                     </div>
                                 </div>
                                 <div className="space-y-1">

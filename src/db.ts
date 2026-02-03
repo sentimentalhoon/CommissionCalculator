@@ -105,6 +105,16 @@ export interface CalculationLog {
     // 정산 결과 스냅샷 - 누가 얼마를 받았는지
     // Settlement results snapshot - who got how much
     results: CalculationResult[];
+
+    // ===== 불러오기 기능용 필드 (For restore feature) =====
+
+    // 선택된 대마스터 ID (정산 대상 루트)
+    // Selected Grand Master ID (root of calculation target)
+    selectedMasterId?: number;
+
+    // 회원별 개별 입력값 스냅샷 { userId: { c: '카지노', s: '슬롯', l: '루징' } }
+    // Individual input values per member { userId: { c: 'casino', s: 'slot', l: 'losing' } }
+    inputs?: Record<number, { c: string, s: string, l: string }>;
 }
 
 /**
