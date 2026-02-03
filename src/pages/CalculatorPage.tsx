@@ -1,7 +1,8 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { db, type User, type CalculationResult } from '../db';
+import { userService } from '../services/userService'; // Import userService
+import type { User, CalculationResult } from '../db';
 import { calculateBatchCommission, type BatchInput } from '../services/calculator';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db as firestoreDb } from '../firebase';
@@ -30,23 +31,25 @@ export default function CalculatorPage() {
     const [searchParams] = useSearchParams();
 
     // ===== 상태 관리 (State Management) =====
-    const [selectedMasterId, setSelectedMasterId] = useState<number | null>(null);
+    // ID types changed to string
+    const [selectedMasterId, setSelectedMasterId] = useState<string | null>(null);
     const [users, setUsers] = useState<User[]>([]);
 
-    // inputs state: Key=userId, Value={c, s, l} (string format for input fields)
-    const [inputs, setInputs] = useState<Record<number, { c: string, s: string, l: string }>>({});
+    // inputs state: Key=userId (string), Value={c, s, l}
+    const [inputs, setInputs] = useState<Record<string, { c: string, s: string, l: string }>>({});
 
     const [results, setResults] = useState<CalculationResult[] | null>(null);
     const [isCalculating, setIsCalculating] = useState(false);
 
-    // 접기/펼치기 상태 관리 (Expanded Masters State)
-    const [expandedMasters, setExpandedMasters] = useState<Set<number>>(new Set());
+    // 접기/펼치기 상태 관리 (Expanded Masters State) - ID type string
+    const [expandedMasters, setExpandedMasters] = useState<Set<string>>(new Set());
 
     // ===== 데이터 로어 (Data Loading) =====
     useEffect(() => {
         const loadUsers = async () => {
             if (currentUser) {
-                const allUsers = await db.users.toArray();
+                // Use userService instead of Dexie
+                const allUsers = await userService.getAllUsers();
                 setUsers(allUsers);
             }
         };
@@ -61,7 +64,7 @@ export default function CalculatorPage() {
             const savedMasterId = localStorage.getItem('calc_selectedMasterId');
             const savedInputs = localStorage.getItem('calc_inputs');
 
-            if (savedMasterId) setSelectedMasterId(Number(savedMasterId));
+            if (savedMasterId) setSelectedMasterId(savedMasterId);
             if (savedInputs) {
                 try {
                     setInputs(JSON.parse(savedInputs));
@@ -75,7 +78,7 @@ export default function CalculatorPage() {
     // 2. Save to LocalStorage on change
     useEffect(() => {
         if (selectedMasterId) {
-            localStorage.setItem('calc_selectedMasterId', String(selectedMasterId));
+            localStorage.setItem('calc_selectedMasterId', selectedMasterId);
         } else {
             localStorage.removeItem('calc_selectedMasterId');
         }
@@ -102,16 +105,8 @@ export default function CalculatorPage() {
                         const data = docSnap.data();
 
                         // 복원 로직
-                        if (data.selectedMasterId) setSelectedMasterId(data.selectedMasterId);
+                        if (data.selectedMasterId) setSelectedMasterId(data.selectedMasterId.toString());
                         if (data.inputs) setInputs(data.inputs);
-
-                        // 결과가 있다면 같이 복원할 수도 있지만, 
-                        // 계산 로직이 바뀌었을 수도 있으므로 입력값만 복원하고 재계산 유도하는 것이 안전함.
-                        // 하지만 사용자 편의를 위해 결과값도 저장되어 있다면 보여줄 수 있음.
-                        // 현재 DB 구조엔 결과도 저장됨. 하지만 구조가 복잡하니 입력값 복원 위주로 처리.
-
-                        // 알림
-                        // alert('과거 기록을 불러왔습니다. 계산하기 버튼을 눌러 결과를 확인하세요.');
                     } else {
                         console.error("No such log document!");
                     }
@@ -137,17 +132,34 @@ export default function CalculatorPage() {
         const master = users.find(u => u.id === selectedMasterId);
 
         if (master) {
+            // 자식 노드 맵 생성 (ParentId -> Children List)
+            const childrenMap = new Map<string, User[]>();
+            users.forEach(u => {
+                if (u.parentId) {
+                    const pid = u.parentId.trim();
+                    if (!childrenMap.has(pid)) {
+                        childrenMap.set(pid, []);
+                    }
+                    childrenMap.get(pid)!.push(u);
+                }
+            });
+
             // 재귀적으로 하위 회원 찾기 (Recursive find)
-            const findChildren = (parentId: number, depth: number) => {
-                const children = users.filter(u => u.parentId === parentId);
+            const findChildren = (parentId: string, depth: number) => {
+                const pid = parentId.trim();
+                const children = childrenMap.get(pid) || [];
+
+                // 이름순 정렬
+                children.sort((a, b) => a.name.localeCompare(b.name));
+
                 children.forEach(child => {
                     result.push({ ...child, depth });
-                    findChildren(child.id!, depth + 1);
+                    if (child.id) findChildren(child.id, depth + 1);
                 });
             };
 
             result.push({ ...master, depth: 0 });
-            findChildren(master.id!, 1);
+            if (master.id) findChildren(master.id, 1);
         }
 
         return result;
@@ -155,14 +167,14 @@ export default function CalculatorPage() {
 
     // ===== 핸들러 (Handlers) =====
     const handleMasterSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
-        const id = Number(e.target.value);
+        const id = e.target.value; // Already string
         setSelectedMasterId(id);
         setInputs({}); // 마스터 변경 시 입력값 초기화
         setResults(null);
         setExpandedMasters(new Set()); // 마스터 변경 시 펼침 상태 초기화
     };
 
-    const handleInputChange = (userId: number, field: 'c' | 's' | 'l', value: string) => {
+    const handleInputChange = (userId: string, field: 'c' | 's' | 'l', value: string) => {
         // 숫자와 콤마만 허용
         const cleanValue = value.replace(/[^0-9,]/g, '');
         // 콤마 포맷팅
@@ -177,7 +189,7 @@ export default function CalculatorPage() {
         }));
     };
 
-    const toggleMaster = (masterId: number) => {
+    const toggleMaster = (masterId: string) => {
         setExpandedMasters(prev => {
             const next = new Set(prev);
             if (next.has(masterId)) {
@@ -193,22 +205,21 @@ export default function CalculatorPage() {
         setIsCalculating(true);
         try {
             // ⭐ 계산 직전에 최신 유저 정보 다시 가져오기 (Refresh users data before calculation)
-            // 대시보드에서 수정된 내용이 반영되지 않는 문제 해결
-            const freshUsers = await db.users.toArray();
+            // Using userService instead of Dexie
+            const freshUsers = await userService.getAllUsers();
             setUsers(freshUsers);
 
             const batchInputs: BatchInput[] = [];
 
             // 입력값이 있는 회원들만 처리
-            Object.entries(inputs).forEach(([userIdStr, val]) => {
-                const userId = Number(userIdStr);
+            Object.entries(inputs).forEach(([userId, val]) => {
                 const c = parseFloat(val.c.replace(/,/g, '') || '0');
                 const s = parseFloat(val.s.replace(/,/g, '') || '0');
                 const l = parseFloat(val.l.replace(/,/g, '') || '0');
 
                 if (c > 0 || s > 0 || l > 0) {
                     batchInputs.push({
-                        performerId: userId,
+                        performerId: userId, // string
                         amounts: { casino: c, slot: s, losing: l }
                     });
                 }
@@ -218,8 +229,7 @@ export default function CalculatorPage() {
             const calcResults = await calculateBatchCommission(batchInputs, freshUsers);
             setResults(calcResults);
 
-            // 자동 저장 (Firestore 저장 로직은 별도 버튼 또는 이 시점에 수행)
-            // Save to Firestore History can be implemented here if needed logic exists
+            // 자동 저장
             await handleSave(calcResults);
 
         } catch (error) {
@@ -251,7 +261,7 @@ export default function CalculatorPage() {
             // 저장할 데이터 구조
             const logData = {
                 date: today,
-                casinoRolling: totalCasino, // 여기서는 수정된 로직상 "총 수수료"가 됩니다. 
+                casinoRolling: totalCasino,
                 slotRolling: totalSlot,
                 losingAmount: totalLosing,
                 results: calcResults,
@@ -291,9 +301,7 @@ export default function CalculatorPage() {
     // 총 지급 수수료 합계 (Total Commission)
     const totalCommission = results?.reduce((acc, curr) => acc + curr.amount, 0) || 0;
 
-    // 본사(최고 관리자) 수익 추정 (본인이 최상위가 아닐 수 있으므로 로직에 따라 다름)
-    // 여기서는 단순히 전체 결과의 합으로 표시
-    const siteProfit = 0; // 이 부분은 요구사항에 따라 수정 필요 (현재는 0으로 둠)
+    const siteProfit = 0;
 
     return (
         <div className="max-w-5xl mx-auto space-y-6">
@@ -354,7 +362,7 @@ export default function CalculatorPage() {
                         const masters = targetMembers.filter(u => u.level === LEVELS[1]);
 
                         // 각 마스터별 하위 회원 가져오기 (Get subordinates for each master)
-                        const getSubordinates = (masterId: number) => {
+                        const getSubordinates = (masterId: string) => {
                             return targetMembers.filter(u => {
                                 if (u.level === LEVELS[0] || u.level === LEVELS[1]) return false;
                                 // 상위 체인을 따라 올라가면서 해당 마스터에 속하는지 확인
@@ -371,7 +379,7 @@ export default function CalculatorPage() {
                         };
 
                         // 마스터별 하위 회원 합계 계산 (Calculate totals per master)
-                        const getMasterTotals = (masterId: number) => {
+                        const getMasterTotals = (masterId: string) => {
                             const subs = getSubordinates(masterId);
                             const parseAmount = (val: string) => parseFloat((val || '0').replace(/,/g, '')) || 0;
                             let totalC = 0, totalS = 0, totalL = 0;
@@ -621,7 +629,7 @@ export default function CalculatorPage() {
             </div>
 
             {results && (() => {
-                // Aggregate results by user
+                // Aggregate results by user - Key is string
                 const aggregated = results.reduce((acc, curr) => {
                     if (!acc[curr.userId]) {
                         acc[curr.userId] = {
@@ -650,7 +658,7 @@ export default function CalculatorPage() {
                     }
                     acc[curr.userId].total += curr.amount;
                     return acc;
-                }, {} as Record<number, { userId: number, userName: string, casino: number, slot: number, losing: number, total: number, casinoBreakdown: string, slotBreakdown: string, losingBreakdown: string }>);
+                }, {} as Record<string, { userId: string, userName: string, casino: number, slot: number, losing: number, total: number, casinoBreakdown: string, slotBreakdown: string, losingBreakdown: string }>);
 
                 return (
                     <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">

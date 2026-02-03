@@ -1,15 +1,5 @@
 /**
  * calculator.ts - 수수료 계산 핵심 로직 (Core Commission Calculation Logic)
- * 
- * ========================================
- * 🔄 정산 로직 대개편 (Logic Overhaul)
- * ========================================
- * 
- * 변경된 로직 (Updated Logic):
- * 1. 입력값(casino, slot)은 하부 회원이 받은 '수수료(Fee)'입니다.
- * 2. 롤링 금액은 역산합니다: Rolling = Fee / Rate
- * 3. 상부 수익은 차액으로 계산: UpperProfit = UpperFee - LowerFee
- * 4. 루징 수익은 공제 후 쉐어: NetLosing = LosingInput - TotalRollingFee
  */
 
 import type { User, CalculationResult } from '../db';
@@ -27,7 +17,7 @@ export interface CalculationAmounts {
  * BatchInput 인터페이스 - 한 회원의 입력 데이터
  */
 export interface BatchInput {
-    performerId: number;      // 회원 ID (Member ID) - 최하위 회원
+    performerId: string;      // 회원 ID (Member ID) - 최하위 회원 (Changed to string)
     amounts: CalculationAmounts;  // 입력 금액들 (Input amounts)
 }
 

@@ -37,108 +37,84 @@ import type { Table } from 'dexie';
  * }
  */
 export interface User {
-    // id?: number - "?"는 선택적(Optional)이라는 뜻. 새 회원은 id가 없고, 저장 후 자동 생성됨
-    // id?: number - "?" means optional. New users don't have an id; it's auto-generated after saving
-    id?: number;
+    // Firestore 문서 ID (문자열)
+    // Firestore Document ID (string)
+    id?: string;
 
     // 로그인 ID (사용자가 입력하는 아이디, 선택사항)
-    // Login ID (user-entered ID, optional)
+    // Login ID
     loginId?: string;
 
-    // 닉네임 (필수) - 화면에 표시되는 이름
-    // Nickname (required) - the name displayed on screen
+    // 닉네임 (필수)
+    // Nickname (required)
     name: string;
 
     // 실명 (선택사항)
     // Real name (optional)
     memberName?: string;
 
-    // 상위 회원의 ID (null이면 최상위 = 대마스터)
-    // ID of the upper member (null means top-level = Grand Master)
-    parentId?: number | null;
+    // 상위 회원의 ID (null이면 최상위)
+    // Parent ID (null for top-level)
+    parentId?: string | null;
 
-    // 카지노 수수료율 (%) - 예: 0.5 = 0.5%
-    // Casino commission rate (%) - e.g., 0.5 = 0.5%
+    // 카지노 수수료율 (%)
     casinoRate: number;
 
-    // 슬롯 수수료율 (%) - 예: 2.5 = 2.5%
-    // Slot commission rate (%) - e.g., 2.5 = 2.5%
+    // 슬롯 수수료율 (%)
     slotRate: number;
 
-    // 루징 수수료율 (%) - 예: 20 = 20%
-    // Losing commission rate (%) - e.g., 20 = 20%
+    // 루징 수수료율 (%)
     losingRate: number;
 
-    // 등급 이름 (선택사항) - 예: "대마스터", "마스터", "본사", "부본사"
-    // Level name (optional) - e.g., "Grand Master", "Master", "Branch", "Sub-Branch"
+    // 등급 이름
     level?: string;
 }
 
 /**
  * CalculationLog 인터페이스 - 정산 기록의 형태를 정의합니다
- * CalculationLog Interface - defines the shape of calculation records
- * 
- * 정산을 완료하면 그 결과가 이 형태로 저장됩니다.
- * When a settlement is completed, the results are saved in this format.
  */
 export interface CalculationLog {
-    // 고유 ID (자동 생성)
-    // Unique ID (auto-generated)
-    id?: number;
+    // 고유 ID (문자열)
+    id?: string;
 
     // 정산 날짜
-    // Settlement date
     date: Date;
 
     // 입력된 카지노 롤링 총액
-    // Total casino rolling amount entered
     casinoRolling: number;
 
     // 입력된 슬롯 롤링 총액
-    // Total slot rolling amount entered
     slotRolling: number;
 
     // 입력된 루징 총액
-    // Total losing amount entered
     losingAmount: number;
 
-    // 정산 결과 스냅샷 - 누가 얼마를 받았는지
-    // Settlement results snapshot - who got how much
+    // 정산 결과 스냅샷
     results: CalculationResult[];
 
-    // ===== 불러오기 기능용 필드 (For restore feature) =====
-
-    // 선택된 대마스터 ID (정산 대상 루트)
-    // Selected Grand Master ID (root of calculation target)
-    selectedMasterId?: number;
+    // ===== 불러오기 기능용 필드 =====
+    // 선택된 대마스터 ID
+    selectedMasterId?: string;
 
     // 회원별 개별 입력값 스냅샷 { userId: { c: '카지노', s: '슬롯', l: '루징' } }
-    // Individual input values per member { userId: { c: 'casino', s: 'slot', l: 'losing' } }
-    inputs?: Record<number, { c: string, s: string, l: string }>;
+    // Key type changed to string (userId)
+    inputs?: Record<string, { c: string, s: string, l: string }>;
 }
 
 /**
- * CalculationResult 인터페이스 - 개별 정산 결과의 형태를 정의합니다
- * CalculationResult Interface - defines the shape of individual settlement results
- * 
- * 각 회원이 받는 수수료 정보를 담습니다.
- * Contains commission information for each member.
+ * CalculationResult 인터페이스
  */
 export interface CalculationResult {
-    // 회원 ID
-    // Member ID
-    userId: number;
+    // 회원 ID (문자열)
+    userId: string;
 
     // 회원 이름
-    // Member name
     userName: string;
 
     // 수수료 금액
-    // Commission amount
     amount: number;
 
-    // 역할: 'self' = 본인 수수료, 'upper' = 상위에서 받는 차등 수수료
-    // Role: 'self' = own commission, 'upper' = differential commission from upper level
+    // 역할: 'self' | 'upper'
     role: 'self' | 'upper';
 
     // 출처: 어떤 항목에서 발생한 수수료인지

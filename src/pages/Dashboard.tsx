@@ -54,26 +54,31 @@ export default function Dashboard() {
 
     // Fetch logs from Firestore
     useEffect(() => {
-        const q = query(collection(firestoreDb, "logs"), orderBy("date", "desc"), limit(5));
-        const unsubscribe = onSnapshot(q, (querySnapshot) => {
+
+        // logs 컬렉션에서 데이터 가져오기 (calculation_logs가 맞는지 확인 필요 - CalculatorPage에서는 'calculation_logs'를 쓰고 있음)
+        // CalculatorPage writes to 'calculation_logs'. Let's check consistency.
+        // Dashboard previously read from 'logs'. I should probably unify this.
+        // Let's assume CalculatorPage's 'calculation_logs' is the correct new one.
+        const logsQuery = query(collection(firestoreDb, "calculation_logs"), orderBy("date", "desc"), limit(5));
+
+        const unsubscribe = onSnapshot(logsQuery, (querySnapshot) => {
             const logsData: (CalculationLog & { docId: string })[] = [];
             querySnapshot.forEach((docSnap) => {
                 const data = docSnap.data();
                 logsData.push({
-                    id: parseInt(docSnap.id) || Date.now(),
-                    docId: docSnap.id, // Firestore 문서 ID 저장 (for restore)
+                    id: docSnap.id, // String ID
+                    docId: docSnap.id,
                     date: data.date?.toDate ? data.date.toDate() : new Date(data.date),
                     casinoRolling: data.casinoRolling || 0,
                     slotRolling: data.slotRolling || 0,
                     losingAmount: data.losingAmount || 0,
                     results: data.results || [],
-                    // 불러오기 가능 여부 확인용 (Check if restore is available)
-                    selectedMasterId: data.selectedMasterId,
-                    inputs: data.inputs
+                    selectedMasterId: data.selectedMasterId, // String ID
+                    inputs: data.inputs // String keys
                 } as CalculationLog & { docId: string });
             });
             setLogs(logsData);
-            setLogCount(logsData.length); // For now, show count of fetched logs
+            setLogCount(logsData.length);
         });
         return () => unsubscribe();
     }, []);

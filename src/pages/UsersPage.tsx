@@ -1,47 +1,18 @@
 /**
  * UsersPage.tsx - 회원 관리 페이지 (Member Management Page)
- * 
- * 이 페이지는 회원 계층 구조를 트리 형태로 보여주고 관리합니다.
- * This page displays and manages the member hierarchy in a tree structure.
- * 
- * 주요 기능 (Main Features):
- * 1. 회원 트리 표시 (Display member tree)
- * 2. 회원 추가/수정/삭제 (Add/Edit/Delete members)
- * 3. 실시간 검색 (Real-time search)
- * 4. 데이터 시딩 (Data seeding) - 테스트용
- * 5. Firebase 마이그레이션 (Firebase migration)
- * 
- * 트리 구조 (Tree Structure):
- * 대마스터 (최상위)
- *   └── 마스터
- *         └── 본사
- *               └── 부본사 (최하위)
  */
 
-// ===== Firebase & 데이터 (Firebase & Data) =====
-import { db as firestoreDb } from '../firebase';
-import { collection, onSnapshot, query, deleteDoc, doc } from 'firebase/firestore';
-
-// ===== 인증 컨텍스트 (Auth Context) =====
-import { useAuth } from '../contexts/AuthContext';
-
-// ===== 유틸리티 (Utilities) =====
-import { migrateDataToFirestore } from '../utils/migration';
-
-// ===== React 훅들 (React Hooks) =====
 import { useEffect, useState, useMemo } from 'react';
+import { useAuth } from '../contexts/AuthContext';
+import { userService } from '../services/userService'; // Import userService
 
-// ===== 아이콘 (Icons) =====
 import { Plus, User as UserIcon, Trash2, Edit2, ChevronDown, ChevronRight, UserPlus, MoreVertical } from 'lucide-react';
-
-// ===== 컴포넌트 (Components) =====
 import UserForm from '../components/UserForm';
-
-// ===== 기타 (Others) =====
 import clsx from 'clsx';
 import { LEVELS } from '../constants/levels';
-import { parseAndSeedData } from '../utils/seedData';
 import type { User } from '../db';
+import { db as firestoreDb } from '../firebase';
+import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
 
 interface UserNode extends User {
     children: UserNode[];
@@ -58,11 +29,11 @@ const UserTreeItem = ({
     node: UserNode;
     depth?: number;
     onEdit: (u: User) => void;
-    onDelete: (id: number) => void;
-    onAddChild: (id: number) => void;
+    onDelete: (id: string) => void;
+    onAddChild: (id: string) => void;
 }) => {
     const [isExpanded, setIsExpanded] = useState(true);
-    const [showActions, setShowActions] = useState(false); // Mobile toggle for actions
+    const [showActions, setShowActions] = useState(false);
     const hasChildren = node.children.length > 0;
 
     const currentLevelIdx = LEVELS.indexOf(node.level as any);
@@ -114,7 +85,6 @@ const UserTreeItem = ({
 
                     <div className="flex justify-between items-start">
                         <div className="flex items-start gap-3">
-                            {/* Badge Count - Darker bg for contrast */}
                             <div className="w-6 h-6 rounded-full bg-white/60 flex items-center justify-center text-slate-600 font-bold text-[10px] border border-black/5 shrink-0 mt-0.5">
                                 {node.children.length > 0 ? node.children.length : '-'}
                             </div>
@@ -136,7 +106,6 @@ const UserTreeItem = ({
                                     팀원: {node.totalDescendants?.toLocaleString() || 0}명
                                 </div>
 
-                                {/* Rates Grid - Compact View */}
                                 <div className="flex flex-wrap gap-1.5 mt-1.5">
                                     <span className="text-[10px] font-medium px-1.5 py-0.5 bg-blue-50 text-blue-700 rounded border border-blue-100 whitespace-nowrap">
                                         C <span className="font-bold">{node.casinoRate}%</span>
@@ -151,13 +120,11 @@ const UserTreeItem = ({
                             </div>
                         </div>
 
-                        {/* Mobile Action Toggle Icon */}
                         <div className="text-slate-300">
                             <MoreVertical size={16} />
                         </div>
                     </div>
 
-                    {/* Action Bar - Expands when tapped */}
                     {showActions && (
                         <div className="mt-3 pt-3 border-t border-slate-100 flex justify-end gap-2 animate-in slide-in-from-top-2 duration-200">
                             {canAddChild && (
@@ -194,7 +161,6 @@ const UserTreeItem = ({
                 </div>
             </div>
 
-            {/* Recursive Children - Reduced padding */}
             {hasChildren && isExpanded && (
                 <div className="relative">
                     <div className="absolute left-[13px] top-0 bottom-4 w-px bg-slate-100" />
@@ -217,16 +183,19 @@ const UserTreeItem = ({
 };
 
 export default function UsersPage() {
-    const { isAdmin } = useAuth()!;
+    const { } = useAuth()!;
     const [users, setUsers] = useState<User[]>([]);
 
-    // Switch to Firestore Realtime Listener
+    // Firestore 실시간 리스너 사용 (Use Firestore Realtime Listener)
     useEffect(() => {
-        const q = query(collection(firestoreDb, "users"));
+        // 이름순 정렬
+        const q = query(collection(firestoreDb, "users"), orderBy('name'));
+
         const unsubscribe = onSnapshot(q, (querySnapshot) => {
             const usersData: User[] = [];
             querySnapshot.forEach((doc) => {
-                usersData.push({ id: parseInt(doc.id), ...doc.data() } as User);
+                // ID를 문자열로 사용 (Use ID as string)
+                usersData.push({ id: doc.id, ...doc.data() } as User);
             });
             setUsers(usersData);
         });
@@ -235,9 +204,9 @@ export default function UsersPage() {
 
     const [showForm, setShowForm] = useState(false);
     const [editingUser, setEditingUser] = useState<User | undefined>(undefined);
-    const [newParentId, setNewParentId] = useState<number | undefined>(undefined);
+    const [newParentId, setNewParentId] = useState<string | undefined>(undefined); // Changed to string
 
-    const handleDelete = async (id: number) => {
+    const handleDelete = async (id: string) => { // Changed to string
         // Check for subordinates
         const hasChildren = users?.some(u => u.parentId === id);
 
@@ -247,7 +216,7 @@ export default function UsersPage() {
         }
 
         if (confirm('정말로 이 회원을 삭제하시겠습니까?')) {
-            await deleteDoc(doc(firestoreDb, "users", id.toString()));
+            await userService.deleteUser(id); // Use userService
         }
     };
 
@@ -263,7 +232,7 @@ export default function UsersPage() {
         setShowForm(true);
     }
 
-    const handleAddChild = (parentId: number) => {
+    const handleAddChild = (parentId: string) => { // Changed to string
         setNewParentId(parentId);
         setEditingUser(undefined);
         setShowForm(true);
@@ -274,7 +243,7 @@ export default function UsersPage() {
     const userTree = useMemo(() => {
         if (!users) return [];
 
-        const userMap = new Map<number, UserNode>();
+        const userMap = new Map<string, UserNode>(); // Changed Key to string
         const roots: UserNode[] = [];
 
         users.forEach(u => {
@@ -297,148 +266,99 @@ export default function UsersPage() {
             }
         });
 
-        // 1. Compute Total Descendants (Bottom-Up)
-        const computeStats = (node: UserNode): number => {
-            let count = 0;
+        // Compute Total Descendants
+        const computeDescendants = (node: UserNode): number => {
+            let count = node.children.length;
             node.children.forEach(child => {
-                count += 1 + computeStats(child); // 1 (child itself) + sub-children
+                count += computeDescendants(child);
             });
             node.totalDescendants = count;
             return count;
         };
 
-        roots.forEach(root => computeStats(root));
+        roots.forEach(computeDescendants);
 
-        // 2. Sort by Total Descendants (Recursive)
-        const sortNodes = (nodes: UserNode[]) => {
-            nodes.sort((a, b) => (b.totalDescendants || 0) - (a.totalDescendants || 0));
-            nodes.forEach(node => sortNodes(node.children));
+        return roots;
+    }, [users]);
+
+    // Search Filtering
+    const filteredTree = useMemo(() => {
+        if (!searchQuery) return userTree;
+
+        const filterNode = (node: UserNode): UserNode | null => {
+            const matches =
+                node.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                (node.loginId && node.loginId.toLowerCase().includes(searchQuery.toLowerCase()));
+
+            const filteredChildren = node.children
+                .map(filterNode)
+                .filter((child): child is UserNode => child !== null);
+
+            if (matches || filteredChildren.length > 0) {
+                return { ...node, children: filteredChildren };
+            }
+            return null;
         };
 
-        sortNodes(roots);
-
-        // Search Filter Logic
-        if (!searchQuery.trim()) return roots;
-
-        const lowerQuery = searchQuery.toLowerCase();
-
-        const isMatch = (node: UserNode) => {
-            const nameMatch = node.name.toLowerCase().includes(lowerQuery);
-            const idMatch = node.loginId ? node.loginId.toLowerCase().includes(lowerQuery) : false;
-            const memberMatch = node.memberName ? node.memberName.toLowerCase().includes(lowerQuery) : false;
-            return nameMatch || idMatch || memberMatch;
-        };
-
-        const filterNodes = (nodes: UserNode[], parentMatched: boolean): UserNode[] => {
-            return nodes.reduce((acc, node) => {
-                const selfMatch = isMatch(node);
-                const shouldKeepChildren = parentMatched || selfMatch;
-
-                // If parent matched or self matched, we want to keep ALL descendants (pass true)
-                // If not, we only keep descendants that have a match (pass false and check result)
-                const filteredChildren = filterNodes(node.children, shouldKeepChildren);
-
-                if (shouldKeepChildren || filteredChildren.length > 0) {
-                    acc.push({
-                        ...node,
-                        children: filteredChildren
-                    });
-                }
-                return acc;
-            }, [] as UserNode[]);
-        };
-
-        return filterNodes(roots, false);
-    }, [users, searchQuery]);
+        return userTree
+            .map(filterNode)
+            .filter((node): node is UserNode => node !== null);
+    }, [userTree, searchQuery]);
 
     return (
-        <div className="space-y-3 pb-24">
-            <div className="flex justify-between items-center sticky top-0 bg-slate-50/95 backdrop-blur-sm py-3 px-1 z-10 border-b border-slate-100">
-                <div className="flex items-center gap-2">
-                    <h2 className="text-xl font-bold text-slate-800">팀 관리</h2>
-                    <button
-                        onClick={() => {
-                            if (confirm('기존 데이터가 모두 삭제되고 초기 데이터가 로드됩니다. 계속하시겠습니까?')) {
-                                parseAndSeedData();
-                            }
-                        }}
-                        className="text-xs font-bold text-primary-600 bg-primary-100 px-2 py-1 rounded hover:bg-primary-200 hidden"
-                    >
-                        데이터 로드
-                    </button>
-
-                    {/* Admin Only Migration Button */}
-                    {isAdmin && (
-                        <button
-                            onClick={async () => {
-                                if (confirm('현재 기기의 데이터를 서버로 업로드하시겠습니까? (기존 서버 데이터는 덮어씌워질 수 있습니다)')) {
-                                    const result = await migrateDataToFirestore();
-                                    if (result.success) {
-                                        alert(`성공적으로 업로드되었습니다. (${result.userCount}명)`);
-                                    } else {
-                                        alert('업로드 실패. 콘솔을 확인하세요.');
-                                    }
-                                }
-                            }}
-                            className="text-xs font-bold text-white bg-slate-900 px-3 py-1.5 rounded-lg hover:bg-slate-800 shadow-sm"
-                        >
-                            서버 동기화
-                        </button>
-                    )}
+        <div className="pb-20">
+            <div className="flex justify-between items-center mb-6">
+                <div>
+                    <h2 className="text-2xl font-bold text-slate-800">회원 관리</h2>
+                    <p className="text-sm text-slate-500 font-medium">총 {users?.length || 0}명의 회원이 등록되어 있습니다.</p>
                 </div>
                 <button
                     onClick={handleAddNew}
-                    className="bg-primary-600 text-white p-2.5 rounded-full shadow-lg shadow-primary-600/30 active:scale-95 transition-all"
+                    className="flex items-center gap-2 bg-slate-900 text-white px-4 py-3 rounded-xl font-bold shadow-lg shadow-slate-900/20 active:scale-95 transition-all"
                 >
-                    <Plus size={24} />
+                    <Plus size={20} />
+                    <span className="hidden sm:inline">회원 추가</span>
                 </button>
             </div>
 
-            {/* Search Input */}
-            <div className="px-1 mb-2">
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm mb-6">
                 <input
                     type="text"
-                    placeholder="이름, 아이디, 실명 검색..."
+                    placeholder="이름 또는 아이디로 검색..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full p-3 rounded-xl bg-white border border-slate-200 focus:border-primary-500 focus:ring-2 focus:ring-primary-100 outline-none transition-all text-sm font-medium"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none focus:bg-white focus:border-primary-500 focus:ring-4 focus:ring-primary-500/10 transition-all font-medium"
                 />
             </div>
 
-            {!users || users.length === 0 ? (
-                <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden mx-1">
-                    <div className="p-10 text-center text-slate-500 flex flex-col items-center">
-                        <div className="bg-slate-100 p-4 rounded-full mb-4">
-                            <UserIcon size={32} className="text-slate-400" />
-                        </div>
-                        <p className="font-bold text-slate-700">팀이 비어있습니다</p>
-                        <p className="text-sm mt-1">+ 버튼을 눌러 회원을 등록하세요</p>
-                    </div>
-                </div>
-            ) : (
-                <div className="space-y-1 relative pr-1">
-                    {userTree.map(root => (
+            <div className="space-y-2">
+                {filteredTree.length > 0 ? (
+                    filteredTree.map(node => (
                         <UserTreeItem
-                            key={root.id}
-                            node={root}
+                            key={node.id}
+                            node={node}
                             onEdit={handleEdit}
                             onDelete={handleDelete}
                             onAddChild={handleAddChild}
                         />
-                    ))}
-                </div>
-            )}
+                    ))
+                ) : (
+                    <div className="text-center py-20 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                        <div className="mx-auto w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center text-slate-400 mb-4">
+                            <UserIcon size={32} />
+                        </div>
+                        <p className="text-slate-500 font-bold mb-1">등록된 회원이 없습니다</p>
+                        <p className="text-slate-400 text-sm">새로운 회원을 추가하여 시작해보세요.</p>
+                    </div>
+                )}
+            </div>
 
             {showForm && (
                 <UserForm
-                    onClose={() => {
-                        setShowForm(false);
-                        setEditingUser(undefined);
-                        setNewParentId(undefined);
-                    }}
+                    onClose={() => setShowForm(false)}
                     editUser={editingUser}
-                    preselectedParentId={newParentId}
-                    restrictToTopLevel={!editingUser && !newParentId}
+                    preselectedParentId={typeof newParentId === 'string' ? newParentId : undefined}
+                    restrictToTopLevel={!editingUser && !newParentId && users.length === 0}
                 />
             )}
         </div>
