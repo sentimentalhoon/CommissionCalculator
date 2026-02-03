@@ -1,14 +1,47 @@
+/**
+ * UsersPage.tsx - 회원 관리 페이지 (Member Management Page)
+ * 
+ * 이 페이지는 회원 계층 구조를 트리 형태로 보여주고 관리합니다.
+ * This page displays and manages the member hierarchy in a tree structure.
+ * 
+ * 주요 기능 (Main Features):
+ * 1. 회원 트리 표시 (Display member tree)
+ * 2. 회원 추가/수정/삭제 (Add/Edit/Delete members)
+ * 3. 실시간 검색 (Real-time search)
+ * 4. 데이터 시딩 (Data seeding) - 테스트용
+ * 5. Firebase 마이그레이션 (Firebase migration)
+ * 
+ * 트리 구조 (Tree Structure):
+ * 대마스터 (최상위)
+ *   └── 마스터
+ *         └── 본사
+ *               └── 부본사 (최하위)
+ */
+
+// ===== Firebase & 데이터 (Firebase & Data) =====
 import { db as firestoreDb } from '../firebase';
 import { collection, onSnapshot, query, deleteDoc, doc } from 'firebase/firestore';
+
+// ===== 인증 컨텍스트 (Auth Context) =====
 import { useAuth } from '../contexts/AuthContext';
+
+// ===== 유틸리티 (Utilities) =====
 import { migrateDataToFirestore } from '../utils/migration';
+
+// ===== React 훅들 (React Hooks) =====
 import { useEffect, useState, useMemo } from 'react';
+
+// ===== 아이콘 (Icons) =====
 import { Plus, User as UserIcon, Trash2, Edit2, ChevronDown, ChevronRight, UserPlus, MoreVertical } from 'lucide-react';
+
+// ===== 컴포넌트 (Components) =====
 import UserForm from '../components/UserForm';
+
+// ===== 기타 (Others) =====
 import clsx from 'clsx';
 import { LEVELS } from '../constants/levels';
 import { parseAndSeedData } from '../utils/seedData';
-import type { User } from '../db'; // Keep using the User type from DB
+import type { User } from '../db';
 
 interface UserNode extends User {
     children: UserNode[];

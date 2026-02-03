@@ -1,8 +1,34 @@
+/**
+ * Dashboard.tsx - 대시보드 페이지 (Dashboard Page)
+ * 
+ * 앱의 첫 화면으로, 주요 통계와 최근 활동을 보여줍니다.
+ * The app's home screen, showing key statistics and recent activity.
+ * 
+ * 표시 정보 (Displayed Information):
+ * 1. 환영 메시지 (Welcome message)
+ * 2. 총 회원수 (Total member count) - Firestore 실시간 연동
+ * 3. 정산 횟수 (Settlement count) - Firestore 실시간 연동
+ * 4. 최근 정산 기록 (Recent settlement history) - 최대 5개
+ * 
+ * Firestore 실시간 리스너 (Firestore Real-time Listeners):
+ * - onSnapshot: 데이터 변경 시 자동으로 UI 업데이트
+ *   Auto-updates UI when data changes
+ */
+
+// React 훅들 (React Hooks)
 import { useState, useEffect } from 'react';
+
+// Firebase Firestore (클라우드 데이터베이스)
 import { db as firestoreDb } from '../firebase';
 import { collection, onSnapshot, query, orderBy, limit } from 'firebase/firestore';
+
+// 타입 정의 (Type definitions)
 import type { CalculationLog } from '../db';
+
+// 날짜 포맷 라이브러리 (Date formatting library)
 import { format } from 'date-fns';
+
+// 아이콘 (Icons)
 import { TrendingUp, Users, History } from 'lucide-react';
 
 export default function Dashboard() {

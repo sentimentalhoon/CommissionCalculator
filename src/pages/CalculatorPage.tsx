@@ -1,12 +1,45 @@
+/**
+ * CalculatorPage.tsx - 정산 계산기 페이지 (Settlement Calculator Page)
+ * 
+ * 이 페이지는 수수료 정산의 핵심 기능을 담당합니다.
+ * This page handles the core functionality of commission settlement.
+ * 
+ * 주요 기능 (Main Features):
+ * 1. 대마스터 선택 (Select Grand Master)
+ * 2. 회원별 입력 (카지노/슬롯/루징) (Input per member: Casino/Slot/Losing)
+ * 3. 자동 합산 (하위→상위) (Auto-sum from lower to upper)
+ * 4. 수수료 계산 (본인 + 차등) (Commission calculation: Own + Differential)
+ * 5. 결과 테이블 표시 (Display results table)
+ * 6. PDF 다운로드 (PDF download)
+ * 7. 기록 저장 (Save to history)
+ * 
+ * 입력 흐름 (Input Flow):
+ * 부본사 입력 → 본사에 자동 합산 → 마스터에 자동 합산 → 대마스터에 자동 합산
+ * 
+ * 계산 흐름 (Calculation Flow):
+ * calculator.ts의 calculateBatchCommission 함수 호출
+ */
+
+// ===== React 훅들 (React Hooks) =====
 import { useState, useMemo, useEffect } from 'react';
+
+// ===== Firebase Firestore =====
 import { db as firestoreDb } from '../firebase';
 import { collection, onSnapshot, query, addDoc } from 'firebase/firestore';
+
+// ===== 타입 정의 (Type definitions) =====
 import type { User, CalculationResult } from '../db';
 import { calculateBatchCommission } from '../services/calculator';
 import type { BatchInput } from '../services/calculator';
+
+// ===== 아이콘 (Icons) =====
 import { Calculator as CalcIcon, DollarSign, Check, Download } from 'lucide-react';
+
+// ===== PDF 생성 라이브러리 (PDF generation libraries) =====
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
+
+// ===== 기타 (Others) =====
 import clsx from 'clsx';
 import { useNavigate } from 'react-router-dom';
 import { LEVELS } from '../constants/levels';

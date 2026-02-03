@@ -1,8 +1,36 @@
+/**
+ * LoginPage.tsx - 로그인 페이지 컴포넌트 (Login Page Component)
+ * 
+ * 이 페이지는 Firebase Authentication을 사용해 이메일/비밀번호 로그인을 처리합니다.
+ * This page handles email/password login using Firebase Authentication.
+ * 
+ * 작동 방식 (How it works):
+ * 1. 사용자가 이메일과 비밀번호를 입력
+ *    User enters email and password
+ * 2. Firebase signInWithEmailAndPassword 함수 호출
+ *    Call Firebase signInWithEmailAndPassword function
+ * 3. 성공하면 홈('/')으로 이동, 실패하면 에러 메시지 표시
+ *    On success navigate to home('/'), on failure show error message
+ * 
+ * 에러 처리 (Error Handling):
+ * - auth/invalid-credential: 이메일 또는 비밀번호 오류
+ * - auth/too-many-requests: 로그인 시도 제한 초과
+ */
+
+// React 훅 (React Hook)
 import { useState } from 'react';
+
+// Firebase 인증 함수 (Firebase Auth function)
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '../firebase';
+
+// React Router - 페이지 이동용 (for navigation)
 import { useNavigate } from 'react-router-dom';
+
+// 아이콘 (Icons)
 import { Lock, LogIn, AlertCircle } from 'lucide-react';
+
+// CSS 클래스 조합 유틸리티
 import clsx from 'clsx';
 
 export default function LoginPage() {

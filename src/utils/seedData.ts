@@ -1,4 +1,28 @@
+/**
+ * seedData.ts - 테스트 데이터 시딩 유틸리티 (Test Data Seeding Utility)
+ * 
+ * 미리 정의된 회원 데이터를 데이터베이스에 입력합니다.
+ * Enters pre-defined member data into the database.
+ * 
+ * 사용 목적 (Purpose):
+ * - 개발/테스트 환경에서 빠르게 데이터 구조 설정
+ *   Quickly set up data structure in dev/test environment
+ * - 실제 사용자 데이터를 기반으로 테스트
+ *   Test with real user data structure
+ * 
+ * rawData 형식 (rawData Format):
+ * 대마스터 아이디(닉네임) (실명)
+ * └마스터 아이디(닉네임) (실명)
+ *   └본사 아이디(닉네임) (실명)
+ * 
+ * "└" 기호로 계층 관계를 표현합니다.
+ * The "└" symbol represents hierarchy relationships.
+ */
+
+// 로컬 데이터베이스 (Local database - Dexie/IndexedDB)
 import { db } from '../db';
+
+// 등급 상수 (Level constants)
 import { LEVELS } from '../constants/levels';
 
 const rawData = `

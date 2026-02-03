@@ -1,9 +1,41 @@
+/**
+ * UserForm.tsx - 회원 등록/수정 폼 컴포넌트 (User Registration/Edit Form Component)
+ * 
+ * 이 컴포넌트는 "Bottom Sheet" 형태의 모달로 표시됩니다.
+ * This component displays as a "Bottom Sheet" style modal.
+ * 
+ * 주요 기능 (Main Features):
+ * 1. 신규 회원 등록 (New member registration)
+ * 2. 기존 회원 정보 수정 (Edit existing member info)
+ * 3. 상위 회원 선택 및 등급 자동 계산 (Parent selection & auto level calculation)
+ * 4. 수수료율 검증 (상위보다 높을 수 없음) (Rate validation - cannot exceed parent's rate)
+ * 
+ * 계층 구조 규칙 (Hierarchy Rules):
+ * - 하위 회원의 수수료율은 상위 회원보다 높을 수 없음
+ *   Lower member's rate cannot exceed parent's rate
+ * - 등급은 상위 회원에 따라 자동 결정됨
+ *   Level is automatically determined based on parent
+ */
+
+// ===== Import 섹션 (Import Section) =====
+
+// React 훅들 (React Hooks)
 import { useState, useEffect } from 'react';
+
+// Firebase Firestore (클라우드 데이터베이스)
 import { db as firestoreDb } from '../firebase';
 import { collection, onSnapshot, query, doc, updateDoc, addDoc } from 'firebase/firestore';
+
+// 타입 정의 (Type definitions)
 import type { User } from '../db';
+
+// 아이콘 (Icons)
 import { X, Check, AlertCircle, ChevronDown } from 'lucide-react';
+
+// 등급 관련 유틸리티 (Level utilities)
 import { getNextLevel, LEVELS } from '../constants/levels';
+
+// CSS 클래스 조합 유틸리티 (CSS class combining utility)
 import clsx from 'clsx';
 
 interface UserFormProps {
