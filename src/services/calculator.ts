@@ -80,7 +80,45 @@ export async function calculateBatchCommission(
             }
         }
 
-        // === 2. 상향식 수익 계산 (Bottom-Up Profit Calculation) ===
+        // === 2. Leaf User's Input Amounts (Display in Results) ===
+        // Add the leaf user's own input amounts to results
+        if (inputCasinoFee > 0 && leafUser.casinoRate > 0) {
+            results.push({
+                userId: leafUser.id!,
+                userName: leafUser.name,
+                role: 'self',
+                source: 'casino',
+                amount: inputCasinoFee,
+                breakdown: `[입력] 카지노 수수료: ${inputCasinoFee.toLocaleString()}\n[요율] ${leafUser.casinoRate}%`,
+                fromUserName: '본인'
+            });
+        }
+
+        if (inputSlotFee > 0 && leafUser.slotRate > 0) {
+            results.push({
+                userId: leafUser.id!,
+                userName: leafUser.name,
+                role: 'self',
+                source: 'slot',
+                amount: inputSlotFee,
+                breakdown: `[입력] 슬롯 수수료: ${inputSlotFee.toLocaleString()}\n[요율] ${leafUser.slotRate}%`,
+                fromUserName: '본인'
+            });
+        }
+
+        if (inputLosingAmt > 0) {
+            results.push({
+                userId: leafUser.id!,
+                userName: leafUser.name,
+                role: 'self',
+                source: 'losing',
+                amount: inputLosingAmt,
+                breakdown: `[입력] 루징 금액: ${inputLosingAmt.toLocaleString()}`,
+                fromUserName: '본인'
+            });
+        }
+
+        // === 3. 상향식 수익 계산 (Bottom-Up Profit Calculation) ===
         // lineage: 직속상위 -> ... -> 대마스터 순서
         const lineage: User[] = [];
         let temp = leafUser;
