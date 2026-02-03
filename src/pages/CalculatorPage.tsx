@@ -33,7 +33,7 @@ import { calculateBatchCommission } from '../services/calculator';
 import type { BatchInput } from '../services/calculator';
 
 // ===== 아이콘 (Icons) =====
-import { Calculator as CalcIcon, DollarSign, Check, Download } from 'lucide-react';
+import { Calculator as CalcIcon, DollarSign, Check, Download, ChevronDown, ChevronRight } from 'lucide-react';
 
 // ===== PDF 생성 라이브러리 (PDF generation libraries) =====
 import jsPDF from 'jspdf';
@@ -152,6 +152,25 @@ export default function CalculatorPage() {
     useEffect(() => {
         localStorage.setItem(STORAGE_KEY_INPUTS, JSON.stringify(inputs));
     }, [inputs]);
+
+    // ===== 마스터 접기/펼치기 상태 (Collapsible master groups) =====
+    // 어떤 마스터가 펼쳐져 있는지 추적
+    // Track which masters are expanded
+    const [expandedMasters, setExpandedMasters] = useState<Set<number>>(new Set());
+
+    // 마스터 펼치기/접기 토글 함수
+    // Toggle expand/collapse for a master
+    const toggleMaster = (masterId: number) => {
+        setExpandedMasters(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(masterId)) {
+                newSet.delete(masterId);
+            } else {
+                newSet.add(masterId);
+            }
+            return newSet;
+        });
+    };
 
     // Get list of members to display (Selected Master + All Descendants)
     const targetMembers = useMemo(() => {
@@ -360,111 +379,222 @@ export default function CalculatorPage() {
                     </select>
                 </div>
 
-                {targetMembers.length > 0 && (
-                    <div className="divide-y divide-slate-100">
-                        {targetMembers.map(u => {
-                            const isGrandMaster = u.level === LEVELS[0];
-                            const inp = isGrandMaster ? grandMasterTotals : (inputs[u.id!] || { c: '', s: '', l: '' });
-                            const depth = (u as FlattenedUser).depth;
+                {targetMembers.length > 0 && (() => {
+                    // 대마스터 찾기 (Find Grand Master)
+                    const grandMaster = targetMembers.find(u => u.level === LEVELS[0]);
+                    // 마스터들 찾기 (Find Masters - direct children of Grand Master)
+                    const masters = targetMembers.filter(u => u.level === LEVELS[1]);
 
-                            return (
-                                <div key={u.id} className={clsx(
-                                    "p-4 transition-colors",
-                                    isGrandMaster ? "bg-amber-50/50 border-b-2 border-amber-200" : "bg-white hover:bg-slate-50"
-                                )}>
-                                    {/* Header: Name & Hierarchy Info */}
+                    // 각 마스터별 하위 회원 가져오기 (Get subordinates for each master)
+                    const getSubordinates = (masterId: number) => {
+                        return targetMembers.filter(u => {
+                            if (u.level === LEVELS[0] || u.level === LEVELS[1]) return false;
+                            // 상위 체인을 따라 올라가면서 해당 마스터에 속하는지 확인
+                            let current = u;
+                            while (current.parentId) {
+                                if (current.parentId === masterId) return true;
+                                const parent = targetMembers.find(p => p.id === current.parentId);
+                                if (!parent) break;
+                                if (parent.level === LEVELS[1]) return parent.id === masterId;
+                                current = parent;
+                            }
+                            return false;
+                        });
+                    };
+
+                    // 마스터별 하위 회원 합계 계산 (Calculate totals per master)
+                    const getMasterTotals = (masterId: number) => {
+                        const subs = getSubordinates(masterId);
+                        const parseAmount = (val: string) => parseFloat((val || '0').replace(/,/g, '')) || 0;
+                        let totalC = 0, totalS = 0, totalL = 0;
+
+                        // 마스터 자신의 입력값 포함
+                        const masterInp = inputs[masterId] || { c: '0', s: '0', l: '0' };
+                        totalC += parseAmount(masterInp.c);
+                        totalS += parseAmount(masterInp.s);
+                        totalL += parseAmount(masterInp.l);
+
+                        // 하위 회원들의 입력값 합산
+                        subs.forEach(s => {
+                            const inp = inputs[s.id!] || { c: '0', s: '0', l: '0' };
+                            totalC += parseAmount(inp.c);
+                            totalS += parseAmount(inp.s);
+                            totalL += parseAmount(inp.l);
+                        });
+
+                        const formatNumber = (num: number) => num > 0 ? num.toLocaleString() : '';
+                        return { c: formatNumber(totalC), s: formatNumber(totalS), l: formatNumber(totalL) };
+                    };
+
+                    return (
+                        <div className="divide-y divide-slate-100">
+                            {/* 대마스터 (Grand Master) - 항상 표시 */}
+                            {grandMaster && (
+                                <div className="p-4 bg-amber-50/50 border-b-2 border-amber-200">
                                     <div className="flex items-center mb-3">
-                                        {/* Visual Depth Indicator */}
-                                        <div style={{ width: `${depth * 12}px` }} className="shrink-0 transition-all" />
-                                        {depth > 0 && (
-                                            <div className="w-3 h-3 border-l-2 border-b-2 border-slate-300 rounded-bl-lg mr-2 -mt-1 shrink-0" />
-                                        )}
-
                                         <div className="flex-1 min-w-0">
                                             <div className="flex items-center gap-2">
                                                 <span className="font-bold text-slate-800 truncate text-sm">
-                                                    {u.name}
+                                                    {grandMaster.name}
                                                 </span>
-                                                <span className={clsx(
-                                                    "text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wide border",
-                                                    u.level === LEVELS[0] ? "bg-amber-50 text-amber-700 border-amber-100" :
-                                                        u.level === LEVELS[1] ? "bg-emerald-50 text-emerald-700 border-emerald-100" :
-                                                            "bg-slate-50 text-slate-500 border-slate-100"
-                                                )}>{u.level}</span>
+                                                <span className="text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wide border bg-amber-50 text-amber-700 border-amber-100">
+                                                    {grandMaster.level}
+                                                </span>
                                             </div>
                                         </div>
                                     </div>
-
-                                    {/* Inputs Grid */}
-                                    <div className="grid grid-cols-3 gap-2 ml-1">
-                                        {/* Casino */}
-                                        <div className="relative">
-                                            <div className="absolute inset-y-0 left-2 flex items-center pointer-events-none">
-                                                <span className="text-[10px] font-bold text-blue-400">C</span>
+                                    {/* Grand Master totals (read-only) */}
+                                    <div className="grid grid-cols-3 gap-2">
+                                        {['c', 's', 'l'].map((field, idx) => (
+                                            <div key={field} className="relative">
+                                                <div className="absolute inset-y-0 left-2 flex items-center pointer-events-none">
+                                                    <span className={clsx("text-[10px] font-bold",
+                                                        idx === 0 ? "text-blue-400" : idx === 1 ? "text-purple-400" : "text-rose-400"
+                                                    )}>{field.toUpperCase()}</span>
+                                                </div>
+                                                <input
+                                                    type="text"
+                                                    value={grandMasterTotals[field as 'c' | 's' | 'l']}
+                                                    disabled
+                                                    className="w-full pl-6 pr-1 py-2 border rounded-lg font-bold outline-none text-sm text-right bg-amber-100/50 border-amber-200 text-amber-900 cursor-not-allowed"
+                                                />
                                             </div>
-                                            <input
-                                                type="text"
-                                                inputMode="decimal"
-                                                placeholder="0"
-                                                value={inp.c || ''}
-                                                onChange={e => handleInputChange(u.id!, 'c', e.target.value)}
-                                                disabled={isGrandMaster}
-                                                className={clsx(
-                                                    "w-full pl-6 pr-1 py-2 border rounded-lg font-bold outline-none text-sm transition-all text-right",
-                                                    isGrandMaster
-                                                        ? "bg-amber-100/50 border-amber-200 text-amber-900 cursor-not-allowed"
-                                                        : "bg-blue-50/20 border-blue-100 text-blue-900 focus:border-blue-500 focus:bg-white placeholder:text-blue-200/50"
-                                                )}
-                                            />
-                                        </div>
-
-                                        {/* Slot */}
-                                        <div className="relative">
-                                            <div className="absolute inset-y-0 left-2 flex items-center pointer-events-none">
-                                                <span className="text-[10px] font-bold text-purple-400">S</span>
-                                            </div>
-                                            <input
-                                                type="text"
-                                                inputMode="decimal"
-                                                placeholder="0"
-                                                value={inp.s || ''}
-                                                onChange={e => handleInputChange(u.id!, 's', e.target.value)}
-                                                disabled={isGrandMaster}
-                                                className={clsx(
-                                                    "w-full pl-6 pr-1 py-2 border rounded-lg font-bold outline-none text-sm transition-all text-right",
-                                                    isGrandMaster
-                                                        ? "bg-amber-100/50 border-amber-200 text-amber-900 cursor-not-allowed"
-                                                        : "bg-purple-50/20 border-purple-100 text-purple-900 focus:border-purple-500 focus:bg-white placeholder:text-purple-200/50"
-                                                )}
-                                            />
-                                        </div>
-
-                                        {/* Losing */}
-                                        <div className="relative">
-                                            <div className="absolute inset-y-0 left-2 flex items-center pointer-events-none">
-                                                <span className="text-[10px] font-bold text-rose-400">L</span>
-                                            </div>
-                                            <input
-                                                type="text"
-                                                inputMode="decimal"
-                                                placeholder="0"
-                                                value={inp.l || ''}
-                                                onChange={e => handleInputChange(u.id!, 'l', e.target.value)}
-                                                disabled={isGrandMaster}
-                                                className={clsx(
-                                                    "w-full pl-6 pr-1 py-2 border rounded-lg font-bold outline-none text-sm transition-all text-right",
-                                                    isGrandMaster
-                                                        ? "bg-amber-100/50 border-amber-200 text-amber-900 cursor-not-allowed"
-                                                        : "bg-rose-50/20 border-rose-100 text-rose-900 focus:border-rose-500 focus:bg-white placeholder:text-rose-200/50"
-                                                )}
-                                            />
-                                        </div>
+                                        ))}
                                     </div>
                                 </div>
-                            );
-                        })}
-                    </div>
-                )}
+                            )}
+
+                            {/* 마스터 목록 (Masters List) - 접기/펼치기 가능 */}
+                            {masters.map(master => {
+                                const isExpanded = expandedMasters.has(master.id!);
+                                const subordinates = getSubordinates(master.id!);
+                                const masterTotals = getMasterTotals(master.id!);
+                                const masterInp = inputs[master.id!] || { c: '', s: '', l: '' };
+
+                                return (
+                                    <div key={master.id}>
+                                        {/* 마스터 헤더 (Master Header) - 클릭하면 펼침/접힘 */}
+                                        <div
+                                            className={clsx(
+                                                "p-4 cursor-pointer transition-colors",
+                                                isExpanded ? "bg-emerald-50/50" : "bg-white hover:bg-slate-50"
+                                            )}
+                                            onClick={() => toggleMaster(master.id!)}
+                                        >
+                                            <div className="flex items-center mb-3">
+                                                {/* 펼침/접힘 아이콘 */}
+                                                <div className="mr-2 text-slate-400">
+                                                    {isExpanded ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
+                                                </div>
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="font-bold text-slate-800 truncate text-sm">
+                                                            {master.name}
+                                                        </span>
+                                                        <span className="text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wide border bg-emerald-50 text-emerald-700 border-emerald-100">
+                                                            {master.level}
+                                                        </span>
+                                                        {subordinates.length > 0 && (
+                                                            <span className="text-[10px] text-slate-400">
+                                                                (+{subordinates.length}명)
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {/* 마스터 합계 표시 (접힌 상태) 또는 입력 필드 (펼친 상태) */}
+                                            <div className="grid grid-cols-3 gap-2 ml-6" onClick={e => e.stopPropagation()}>
+                                                {['c', 's', 'l'].map((field, idx) => (
+                                                    <div key={field} className="relative">
+                                                        <div className="absolute inset-y-0 left-2 flex items-center pointer-events-none">
+                                                            <span className={clsx("text-[10px] font-bold",
+                                                                idx === 0 ? "text-blue-400" : idx === 1 ? "text-purple-400" : "text-rose-400"
+                                                            )}>{field.toUpperCase()}</span>
+                                                        </div>
+                                                        {!isExpanded ? (
+                                                            // 접힌 상태: 합계 표시
+                                                            <input
+                                                                type="text"
+                                                                value={masterTotals[field as 'c' | 's' | 'l']}
+                                                                disabled
+                                                                className="w-full pl-6 pr-1 py-2 border rounded-lg font-bold outline-none text-sm text-right bg-slate-100 border-slate-200 text-slate-600 cursor-not-allowed"
+                                                            />
+                                                        ) : (
+                                                            // 펼친 상태: 입력 가능
+                                                            <input
+                                                                type="text"
+                                                                inputMode="decimal"
+                                                                placeholder="0"
+                                                                value={masterInp[field as 'c' | 's' | 'l'] || ''}
+                                                                onChange={e => handleInputChange(master.id!, field as 'c' | 's' | 'l', e.target.value)}
+                                                                className={clsx(
+                                                                    "w-full pl-6 pr-1 py-2 border rounded-lg font-bold outline-none text-sm transition-all text-right",
+                                                                    idx === 0 ? "bg-blue-50/20 border-blue-100 text-blue-900 focus:border-blue-500 focus:bg-white" :
+                                                                        idx === 1 ? "bg-purple-50/20 border-purple-100 text-purple-900 focus:border-purple-500 focus:bg-white" :
+                                                                            "bg-rose-50/20 border-rose-100 text-rose-900 focus:border-rose-500 focus:bg-white"
+                                                                )}
+                                                            />
+                                                        )}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        {/* 하위 회원들 (Subordinates) - 펼침 상태에서만 표시 */}
+                                        {isExpanded && subordinates.map(sub => {
+                                            const subInp = inputs[sub.id!] || { c: '', s: '', l: '' };
+                                            const subDepth = (sub as FlattenedUser).depth - 1; // 마스터 기준 상대 깊이
+
+                                            return (
+                                                <div key={sub.id} className="p-4 bg-white hover:bg-slate-50 border-t border-slate-50">
+                                                    <div className="flex items-center mb-3">
+                                                        <div style={{ width: `${(subDepth + 1) * 16}px` }} className="shrink-0" />
+                                                        <div className="w-3 h-3 border-l-2 border-b-2 border-slate-300 rounded-bl-lg mr-2 -mt-1 shrink-0" />
+                                                        <div className="flex-1 min-w-0">
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="font-bold text-slate-800 truncate text-sm">
+                                                                    {sub.name}
+                                                                </span>
+                                                                <span className="text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wide border bg-slate-50 text-slate-500 border-slate-100">
+                                                                    {sub.level}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <div className="grid grid-cols-3 gap-2" style={{ marginLeft: `${(subDepth + 1) * 16 + 20}px` }}>
+                                                        {['c', 's', 'l'].map((field, idx) => (
+                                                            <div key={field} className="relative">
+                                                                <div className="absolute inset-y-0 left-2 flex items-center pointer-events-none">
+                                                                    <span className={clsx("text-[10px] font-bold",
+                                                                        idx === 0 ? "text-blue-400" : idx === 1 ? "text-purple-400" : "text-rose-400"
+                                                                    )}>{field.toUpperCase()}</span>
+                                                                </div>
+                                                                <input
+                                                                    type="text"
+                                                                    inputMode="decimal"
+                                                                    placeholder="0"
+                                                                    value={subInp[field as 'c' | 's' | 'l'] || ''}
+                                                                    onChange={e => handleInputChange(sub.id!, field as 'c' | 's' | 'l', e.target.value)}
+                                                                    className={clsx(
+                                                                        "w-full pl-6 pr-1 py-2 border rounded-lg font-bold outline-none text-sm transition-all text-right",
+                                                                        idx === 0 ? "bg-blue-50/20 border-blue-100 text-blue-900 focus:border-blue-500 focus:bg-white" :
+                                                                            idx === 1 ? "bg-purple-50/20 border-purple-100 text-purple-900 focus:border-purple-500 focus:bg-white" :
+                                                                                "bg-rose-50/20 border-rose-100 text-rose-900 focus:border-rose-500 focus:bg-white"
+                                                                    )}
+                                                                />
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    );
+                })()}
 
                 {targetMembers.length > 0 && (
                     <div className="p-4 border-t border-slate-100 bg-slate-50">
