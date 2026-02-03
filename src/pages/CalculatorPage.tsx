@@ -79,9 +79,37 @@ export default function CalculatorPage() {
 
     const navigate = useNavigate();
 
-    const [selectedMasterId, setSelectedMasterId] = useState<string>('');
-    const [inputs, setInputs] = useState<Record<number, { c: string, s: string, l: string }>>({});
+    // ===== localStorage 키 정의 (localStorage keys) =====
+    const STORAGE_KEY_MASTER = 'calculator_selectedMasterId';
+    const STORAGE_KEY_INPUTS = 'calculator_inputs';
+
+    // 선택된 대마스터 상태 - localStorage에서 초기값 불러오기
+    // Selected master state - load initial value from localStorage
+    const [selectedMasterId, setSelectedMasterId] = useState<string>(() => {
+        const saved = localStorage.getItem(STORAGE_KEY_MASTER);
+        return saved || '';
+    });
+
+    // 입력값 상태 - localStorage에서 초기값 불러오기
+    // Input values state - load initial value from localStorage
+    const [inputs, setInputs] = useState<Record<number, { c: string, s: string, l: string }>>(() => {
+        const saved = localStorage.getItem(STORAGE_KEY_INPUTS);
+        return saved ? JSON.parse(saved) : {};
+    });
+
     const [results, setResults] = useState<CalculationResult[] | null>(null);
+
+    // ===== 자동 저장: selectedMasterId 변경 시 localStorage에 저장 =====
+    // Auto-save: Save to localStorage when selectedMasterId changes
+    useEffect(() => {
+        localStorage.setItem(STORAGE_KEY_MASTER, selectedMasterId);
+    }, [selectedMasterId]);
+
+    // ===== 자동 저장: inputs 변경 시 localStorage에 저장 =====  
+    // Auto-save: Save to localStorage when inputs change
+    useEffect(() => {
+        localStorage.setItem(STORAGE_KEY_INPUTS, JSON.stringify(inputs));
+    }, [inputs]);
 
     // Get list of members to display (Selected Master + All Descendants)
     const targetMembers = useMemo(() => {
