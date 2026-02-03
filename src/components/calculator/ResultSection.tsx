@@ -1,5 +1,6 @@
-import { DollarSign, Download } from 'lucide-react';
+import { DollarSign, Download, ChevronDown, ChevronRight } from 'lucide-react';
 import { clsx } from 'clsx';
+import { useState } from 'react';
 import type { CalculationResult } from '../../db';
 import type { FlattenedUser } from '../../hooks/useCalculator';
 
@@ -9,7 +10,30 @@ interface ResultSectionProps {
     onDownloadPDF: () => void;
 }
 
+// Subordinate Breakdown Data Type
+interface SubBreakdown {
+    fromUserName: string;
+    casino: number;
+    slot: number;
+    losing: number;
+    casinoBreakdown: string[];
+    slotBreakdown: string[];
+    losingBreakdown: string[];
+}
+
+interface UserResultData {
+    userId: string;
+    userName: string;
+    casino: number;
+    slot: number;
+    losing: number;
+    total: number;
+    bySub: Record<string, SubBreakdown>; // Grouped by fromUserName
+}
+
 export function ResultSection({ results, targetMembers, onDownloadPDF }: ResultSectionProps) {
+    const [expandedUsers, setExpandedUsers] = useState<Set<string>>(new Set());
+
     if (!results) return null;
 
     // Aggregate results logic
@@ -22,29 +46,59 @@ export function ResultSection({ results, targetMembers, onDownloadPDF }: ResultS
                 slot: 0,
                 losing: 0,
                 total: 0,
-                casinoBreakdown: '',
-                slotBreakdown: '',
-                losingBreakdown: ''
+                bySub: {} // Init group map
             };
         }
+
+        const userRec = acc[curr.userId];
+        const fromName = curr.fromUserName || '기타';
+
+        // Init sub breakdown if not exists
+        if (!userRec.bySub[fromName]) {
+            userRec.bySub[fromName] = {
+                fromUserName: fromName,
+                casino: 0,
+                slot: 0,
+                losing: 0,
+                casinoBreakdown: [],
+                slotBreakdown: [],
+                losingBreakdown: []
+            };
+        }
+
+        const subRec = userRec.bySub[fromName];
+
         if (curr.source === 'casino') {
-            acc[curr.userId].casino += curr.amount;
-            if (curr.breakdown) acc[curr.userId].casinoBreakdown += (acc[curr.userId].casinoBreakdown ? '\n' : '') + curr.breakdown;
+            userRec.casino += curr.amount;
+            subRec.casino += curr.amount;
+            if (curr.breakdown) subRec.casinoBreakdown.push(curr.breakdown);
         }
         if (curr.source === 'slot') {
-            acc[curr.userId].slot += curr.amount;
-            if (curr.breakdown) acc[curr.userId].slotBreakdown += (acc[curr.userId].slotBreakdown ? '\n' : '') + curr.breakdown;
+            userRec.slot += curr.amount;
+            subRec.slot += curr.amount;
+            if (curr.breakdown) subRec.slotBreakdown.push(curr.breakdown);
         }
         if (curr.source === 'losing') {
-            acc[curr.userId].losing += curr.amount;
-            if (curr.breakdown) acc[curr.userId].losingBreakdown += (acc[curr.userId].losingBreakdown ? '\n' : '') + curr.breakdown;
+            userRec.losing += curr.amount;
+            subRec.losing += curr.amount;
+            if (curr.breakdown) subRec.losingBreakdown.push(curr.breakdown);
         }
-        acc[curr.userId].total += curr.amount;
+        userRec.total += curr.amount;
         return acc;
-    }, {} as Record<string, { userId: string, userName: string, casino: number, slot: number, losing: number, total: number, casinoBreakdown: string, slotBreakdown: string, losingBreakdown: string }>);
+    }, {} as Record<string, UserResultData>);
 
     const totalCommission = results.reduce((acc, curr) => acc + curr.amount, 0) || 0;
-    const siteProfit = 0; // Fixed as per original code
+    const siteProfit = 0;
+
+    const toggleExpand = (userId: string) => {
+        const newSet = new Set(expandedUsers);
+        if (newSet.has(userId)) {
+            newSet.delete(userId);
+        } else {
+            newSet.add(userId);
+        }
+        setExpandedUsers(newSet);
+    };
 
     return (
         <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -91,11 +145,11 @@ export function ResultSection({ results, targetMembers, onDownloadPDF }: ResultS
                             slot: 0,
                             losing: 0,
                             total: 0,
-                            casinoBreakdown: '',
-                            slotBreakdown: '',
-                            losingBreakdown: ''
+                            bySub: {}
                         };
                         const depth = (u as FlattenedUser).depth;
+                        const isExpanded = expandedUsers.has(u.id!);
+                        const hasDetails = Object.keys(r.bySub).length > 0;
 
                         return (
                             <div key={u.id} className="flex">
@@ -116,59 +170,95 @@ export function ResultSection({ results, targetMembers, onDownloadPDF }: ResultS
                                                 {u.level}
                                             </span>
                                         </div>
-                                        {u.loginId && <span className="text-xs text-slate-400 font-mono">{u.loginId}</span>}
+                                        {/* Toggle Button for Details */}
+                                        {hasDetails ? (
+                                            <button
+                                                onClick={() => toggleExpand(u.id!)}
+                                                className="flex items-center gap-1 text-slate-400 hover:text-slate-600 active:scale-95 transition-all text-xs font-bold px-2 py-1 rounded hover:bg-slate-100"
+                                            >
+                                                {isExpanded ? '접기' : '상세'}
+                                                {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                                            </button>
+                                        ) : (
+                                            u.loginId && <span className="text-xs text-slate-400 font-mono">{u.loginId}</span>
+                                        )}
                                     </div>
 
-                                    {/* [3] Row: Breakdown Lines (C / S / L) */}
+                                    {/* [3] Row: Amount Summary (C / S / L) */}
                                     <div className="grid grid-cols-3 divide-x divide-slate-100">
                                         {/* Casino */}
-                                        <div className="p-2 flex flex-col gap-1">
-                                            <div className="text-[10px] font-bold text-blue-400 uppercase text-center">Casino</div>
-                                            <div className="text-center font-bold text-slate-700">{Math.floor(r.casino).toLocaleString()}</div>
-                                            {r.casinoBreakdown && (
-                                                <div className="text-center">
-                                                    <details className="group inline-block text-left w-full">
-                                                        <summary className="text-[10px] cursor-pointer text-slate-300 hover:text-blue-500 list-none text-center">▼</summary>
-                                                        <div className="text-[10px] text-left text-slate-500 bg-slate-50 p-2 rounded mt-1 whitespace-pre-wrap leading-relaxed border border-slate-100 break-all">
-                                                            {r.casinoBreakdown}
-                                                        </div>
-                                                    </details>
-                                                </div>
-                                            )}
+                                        <div className="p-2 flex flex-col gap-1 items-center">
+                                            <div className="text-[10px] font-bold text-blue-400 uppercase">Casino</div>
+                                            <div className="font-bold text-slate-700">{Math.floor(r.casino).toLocaleString()}</div>
                                         </div>
 
                                         {/* Slot */}
-                                        <div className="p-2 flex flex-col gap-1">
-                                            <div className="text-[10px] font-bold text-purple-400 uppercase text-center">Slot</div>
-                                            <div className="text-center font-bold text-slate-700">{Math.floor(r.slot).toLocaleString()}</div>
-                                            {r.slotBreakdown && (
-                                                <div className="text-center">
-                                                    <details className="group inline-block text-left w-full">
-                                                        <summary className="text-[10px] cursor-pointer text-slate-300 hover:text-purple-500 list-none text-center">▼</summary>
-                                                        <div className="text-[10px] text-left text-slate-500 bg-slate-50 p-2 rounded mt-1 whitespace-pre-wrap leading-relaxed border border-slate-100 break-all">
-                                                            {r.slotBreakdown}
-                                                        </div>
-                                                    </details>
-                                                </div>
-                                            )}
+                                        <div className="p-2 flex flex-col gap-1 items-center">
+                                            <div className="text-[10px] font-bold text-purple-400 uppercase">Slot</div>
+                                            <div className="font-bold text-slate-700">{Math.floor(r.slot).toLocaleString()}</div>
                                         </div>
 
                                         {/* Losing */}
-                                        <div className="p-2 flex flex-col gap-1">
-                                            <div className="text-[10px] font-bold text-rose-400 uppercase text-center">Losing</div>
-                                            <div className="text-center font-bold text-slate-700">{Math.floor(r.losing).toLocaleString()}</div>
-                                            {r.losingBreakdown && (
-                                                <div className="text-center">
-                                                    <details className="group inline-block text-left w-full">
-                                                        <summary className="text-[10px] cursor-pointer text-slate-300 hover:text-rose-500 list-none text-center">▼</summary>
-                                                        <div className="text-[10px] text-left text-slate-500 bg-slate-50 p-2 rounded mt-1 whitespace-pre-wrap leading-relaxed border border-slate-100 break-all">
-                                                            {r.losingBreakdown}
-                                                        </div>
-                                                    </details>
-                                                </div>
-                                            )}
+                                        <div className="p-2 flex flex-col gap-1 items-center">
+                                            <div className="text-[10px] font-bold text-rose-400 uppercase">Losing</div>
+                                            <div className="font-bold text-slate-700">{Math.floor(r.losing).toLocaleString()}</div>
                                         </div>
                                     </div>
+
+                                    {/* Collapsible Details Section (Expanded) */}
+                                    {isExpanded && (
+                                        <div className="bg-slate-50 border-t border-slate-100 p-3 space-y-3">
+                                            {Object.values(r.bySub).map((sub, idx) => (
+                                                <div key={idx} className="bg-white border border-slate-200 rounded-lg p-3">
+                                                    <div className="flex items-center gap-2 mb-2 pb-2 border-b border-slate-100">
+                                                        <span className="text-xs font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">하부</span>
+                                                        <span className="font-bold text-slate-800 text-sm">{sub.fromUserName}</span>
+                                                    </div>
+
+                                                    <div className="space-y-3">
+                                                        {/* Casino Detail */}
+                                                        {sub.casinoBreakdown.length > 0 && (
+                                                            <div className="text-xs">
+                                                                <div className="flex justify-between font-bold text-blue-600 mb-1">
+                                                                    <span>Casino 수익</span>
+                                                                    <span>{sub.casino.toLocaleString()}</span>
+                                                                </div>
+                                                                <div className="pl-2 border-l-2 border-blue-100 text-slate-500 whitespace-pre-wrap leading-relaxed">
+                                                                    {sub.casinoBreakdown.join('\n')}
+                                                                </div>
+                                                            </div>
+                                                        )}
+
+                                                        {/* Slot Detail */}
+                                                        {sub.slotBreakdown.length > 0 && (
+                                                            <div className="text-xs">
+                                                                <div className="flex justify-between font-bold text-purple-600 mb-1">
+                                                                    <span>Slot 수익</span>
+                                                                    <span>{sub.slot.toLocaleString()}</span>
+                                                                </div>
+                                                                <div className="pl-2 border-l-2 border-purple-100 text-slate-500 whitespace-pre-wrap leading-relaxed">
+                                                                    {sub.slotBreakdown.join('\n')}
+                                                                </div>
+                                                            </div>
+                                                        )}
+
+                                                        {/* Losing Detail */}
+                                                        {sub.losingBreakdown.length > 0 && (
+                                                            <div className="text-xs">
+                                                                <div className="flex justify-between font-bold text-rose-600 mb-1">
+                                                                    <span>Losing 수익</span>
+                                                                    <span>{sub.losing.toLocaleString()}</span>
+                                                                </div>
+                                                                <div className="pl-2 border-l-2 border-rose-100 text-slate-500 whitespace-pre-wrap leading-relaxed">
+                                                                    {sub.losingBreakdown.join('\n')}
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
 
                                     {/* [1] Row: Total */}
                                     <div className="px-4 py-2 bg-slate-800 text-white flex justify-between items-center text-sm">

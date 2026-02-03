@@ -55,7 +55,8 @@ export async function calculateBatchCommission(
                     role: 'self',
                     source: 'casino',
                     amount: 0,
-                    breakdown: msgCasino
+                    breakdown: msgCasino,
+                    fromUserName: '본인'
                 });
             }
         }
@@ -73,7 +74,8 @@ export async function calculateBatchCommission(
                     role: 'self',
                     source: 'slot',
                     amount: 0,
-                    breakdown: msgSlot
+                    breakdown: msgSlot,
+                    fromUserName: '본인'
                 });
             }
         }
@@ -116,7 +118,8 @@ export async function calculateBatchCommission(
                     breakdown: `[하부: ${prevUser.name}] 수수료: ${prevCasinoFee.toLocaleString()} (요율 ${prevUser.casinoRate}%)\n` +
                         `[역산] 롤링: ${rollingCasino.toLocaleString()}\n` +
                         `[본인: ${upper.name}] 총수수료: ${currCasinoFee.toLocaleString()} (요율 ${upper.casinoRate}%)\n` +
-                        `[수익] ${currCasinoFee.toLocaleString()} - ${prevCasinoFee.toLocaleString()} = ${profitCasino.toLocaleString()}`
+                        `[수익] ${currCasinoFee.toLocaleString()} - ${prevCasinoFee.toLocaleString()} = ${profitCasino.toLocaleString()}`,
+                    fromUserName: prevUser.name
                 });
             } else if (rollingCasino > 0) {
                 // 수익이 0이어도 계산 근거 남기기 (디버깅용)
@@ -127,7 +130,8 @@ export async function calculateBatchCommission(
                     source: 'casino',
                     amount: 0,
                     breakdown: `[하부] 요율 ${prevUser.casinoRate}% vs [본인] 요율 ${upper.casinoRate}% (동일하거나 역마진)\n` +
-                        `[수익] 0`
+                        `[수익] 0`,
+                    fromUserName: prevUser.name
                 });
             }
 
@@ -145,7 +149,8 @@ export async function calculateBatchCommission(
                     breakdown: `[하부: ${prevUser.name}] 수수료: ${prevSlotFee.toLocaleString()} (요율 ${prevUser.slotRate}%)\n` +
                         `[역산] 롤링: ${rollingSlot.toLocaleString()}\n` +
                         `[본인: ${upper.name}] 총수수료: ${currSlotFee.toLocaleString()} (요율 ${upper.slotRate}%)\n` +
-                        `[수익] ${currSlotFee.toLocaleString()} - ${prevSlotFee.toLocaleString()} = ${profitSlot.toLocaleString()}`
+                        `[수익] ${currSlotFee.toLocaleString()} - ${prevSlotFee.toLocaleString()} = ${profitSlot.toLocaleString()}`,
+                    fromUserName: prevUser.name
                 });
             }
 
@@ -177,7 +182,8 @@ export async function calculateBatchCommission(
                             ` - 카지노 마진: ${marginCasinoRate.toFixed(2)}% (${upper.casinoRate}% - ${leafUser.casinoRate}%)\n` +
                             ` - 슬롯 마진: ${marginSlotRate.toFixed(2)}% (${upper.slotRate}% - ${leafUser.slotRate}%)\n` +
                             `[순수루징] ${netLosing.toLocaleString()}\n` +
-                            `[수익] ${netLosing.toLocaleString()} × (본인${upper.losingRate}% - 하부${prevLosingRate}%) = ${profitLosing.toLocaleString()}`
+                            `[수익] ${netLosing.toLocaleString()} × (본인${upper.losingRate}% - 하부${prevLosingRate}%) = ${profitLosing.toLocaleString()}`,
+                        fromUserName: prevUser.name
                     });
                 }
             }

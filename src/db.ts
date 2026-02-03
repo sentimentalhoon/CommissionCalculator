@@ -124,6 +124,10 @@ export interface CalculationResult {
     // 계산 상세 내역 (선택사항) - 어떻게 계산되었는지 보여주는 문자열
     // Calculation breakdown (optional) - string showing how it was calculated
     breakdown?: string;
+
+    // 수수료 발생 출처 회원명 (선택사항) - 하부 회원 이름
+    // Source member name (optional)
+    fromUserName?: string;
 }
 
 /**
