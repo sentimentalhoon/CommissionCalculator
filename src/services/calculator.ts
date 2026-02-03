@@ -32,7 +32,8 @@ export async function calculateBatchCommission(
 
     // 각 최하위 회원(Leaf Node)의 입력에 대해 계산 수행
     for (const input of inputs) {
-        const leafUser = allUsers.find(u => u.id === input.performerId);
+        // ID 비교 시 안전하게 문자열 변환 (Safe string conversion for ID comparison)
+        const leafUser = allUsers.find(u => String(u.id) === String(input.performerId));
         if (!leafUser) continue;
 
         // === 1. 기본 데이터 준비 (Basic Data) ===
@@ -82,7 +83,8 @@ export async function calculateBatchCommission(
         const lineage: User[] = [];
         let temp = leafUser;
         while (temp.parentId) {
-            const parent = allUsers.find(u => u.id === temp.parentId);
+            // 부모 찾기시에도 안전하게 문자열 변환 (Safe string conversion for finding parent)
+            const parent = allUsers.find(u => String(u.id) === String(temp.parentId));
             if (!parent) break;
             lineage.push(parent);
             temp = parent;
