@@ -51,24 +51,44 @@ export async function calculateBatchCommission(
         const inputLosingAmt = input.amounts.losing; // 입력된 루징 금액
 
         // 롤링 금액 역산 (Rolling = Fee / Rate)
-        // (요율이 0이면 롤링도 0 처리)
-        const rollingCasino = leafUser.casinoRate > 0 ? inputCasinoFee / (leafUser.casinoRate / 100) : 0;
-        const rollingSlot = leafUser.slotRate > 0 ? inputSlotFee / (leafUser.slotRate / 100) : 0;
+        let rollingCasino = 0;
+        let msgCasino = '';
+        if (inputCasinoFee > 0) {
+            if (leafUser.casinoRate > 0) {
+                rollingCasino = inputCasinoFee / (leafUser.casinoRate / 100);
+            } else {
+                msgCasino = `⛔ [오류] 하부(${leafUser.name})의 카지노 요율이 0%입니다.\n수수료(${inputCasinoFee.toLocaleString()})로 롤링을 역산할 수 없습니다.`;
+                results.push({
+                    userId: leafUser.id!,
+                    userName: leafUser.name,
+                    role: 'self',
+                    source: 'casino',
+                    amount: 0,
+                    breakdown: msgCasino
+                });
+            }
+        }
+
+        let rollingSlot = 0;
+        let msgSlot = '';
+        if (inputSlotFee > 0) {
+            if (leafUser.slotRate > 0) {
+                rollingSlot = inputSlotFee / (leafUser.slotRate / 100);
+            } else {
+                msgSlot = `⛔ [오류] 하부(${leafUser.name})의 슬롯 요율이 0%입니다.\n수수료(${inputSlotFee.toLocaleString()})로 롤링을 역산할 수 없습니다.`;
+                results.push({
+                    userId: leafUser.id!,
+                    userName: leafUser.name,
+                    role: 'self',
+                    source: 'slot',
+                    amount: 0,
+                    breakdown: msgSlot
+                });
+            }
+        }
 
         // === 2. 상향식 수익 계산 (Bottom-Up Profit Calculation) ===
-        // 루징 공제액 계산을 위한 변수 (최상위 마스터의 롤링 수수료 총액을 찾아야 함)
-        // 각 단계마다 계산되는 Fee를 추적하다가, 마지막(최상위)의 Fee를 공제액으로 사용?
-        // 아니면 "상부의 casino fee"라는게 직속 상위의 Fee인가? 
-        // User said: "x 에서 상부의 casino fee, slot fee 를 뺀 후에 ... 그 Fee 에 대한 상부의 Fee 도 계산되어야만 해."
-        // 해석: 루징은 "순수익" 개념이므로, 이 라인에서 지급된(혹은 회사가 가져간) 모든 롤링 수수료를 뺀 나머지를 루징으로 본다.
-        // 그러므로 이 라인의 최상위(루트) 마스터가 가져가는 Total Fee가 공제액이 된다. (왜냐하면 그 안에 하부 몫도 다 포함되니까)
-
-        // 먼저 상위 라인을 미리 순회하여 루트 Fee를 구할 수도 있지만,
-        // 여기서는 Bottom-Up 루프를 돌면서 상위로 갈 때마다 Fee를 갱신하고, 기록한다.
-        // Losing 처리는 별도로 루프가 끝난 후에 하거나, 루프 내에서 처리하되 공제액을 어떻게 알지?
-        // => 루징 계산은 상위로 올라가면서 "누적 공제"가 아니라 "고정된 공제액(루트 수수료)"을 뺴는게 맞을듯 하다.
-        // 일단 상위 경로를 배열로 만들자.
-
+        // lineage: 직속상위 -> ... -> 대마스터 순서
         const lineage: User[] = [];
         let temp = leafUser;
         while (temp.parentId) {
@@ -108,10 +128,21 @@ export async function calculateBatchCommission(
                     role: 'upper',
                     source: 'casino',
                     amount: profitCasino,
-                    breakdown: `[하부] 수수료: ${prevCasinoFee.toLocaleString()} (요율 ${prevUser.casinoRate}%)\n` +
+                    breakdown: `[하부: ${prevUser.name}] 수수료: ${prevCasinoFee.toLocaleString()} (요율 ${prevUser.casinoRate}%)\n` +
                         `[역산] 롤링: ${rollingCasino.toLocaleString()}\n` +
-                        `[본인] 총수수료: ${currCasinoFee.toLocaleString()} (요율 ${upper.casinoRate}%)\n` +
+                        `[본인: ${upper.name}] 총수수료: ${currCasinoFee.toLocaleString()} (요율 ${upper.casinoRate}%)\n` +
                         `[수익] ${currCasinoFee.toLocaleString()} - ${prevCasinoFee.toLocaleString()} = ${profitCasino.toLocaleString()}`
+                });
+            } else if (rollingCasino > 0) {
+                // 수익이 0이어도 계산 근거 남기기 (디버깅용)
+                results.push({
+                    userId: upper.id!,
+                    userName: upper.name,
+                    role: 'upper',
+                    source: 'casino',
+                    amount: 0,
+                    breakdown: `[하부] 요율 ${prevUser.casinoRate}% vs [본인] 요율 ${upper.casinoRate}% (동일하거나 역마진)\n` +
+                        `[수익] 0`
                 });
             }
 
@@ -126,19 +157,14 @@ export async function calculateBatchCommission(
                     role: 'upper',
                     source: 'slot',
                     amount: profitSlot,
-                    breakdown: `[하부] 수수료: ${prevSlotFee.toLocaleString()} (요율 ${prevUser.slotRate}%)\n` +
+                    breakdown: `[하부: ${prevUser.name}] 수수료: ${prevSlotFee.toLocaleString()} (요율 ${prevUser.slotRate}%)\n` +
                         `[역산] 롤링: ${rollingSlot.toLocaleString()}\n` +
-                        `[본인] 총수수료: ${currSlotFee.toLocaleString()} (요율 ${upper.slotRate}%)\n` +
+                        `[본인: ${upper.name}] 총수수료: ${currSlotFee.toLocaleString()} (요율 ${upper.slotRate}%)\n` +
                         `[수익] ${currSlotFee.toLocaleString()} - ${prevSlotFee.toLocaleString()} = ${profitSlot.toLocaleString()}`
                 });
             }
 
             // 3. 루징 수익 (Losing Share)
-            // 공제된 순수 루징 금액에 대해 요율 차이만큼 가져감
-            // 순수 루징이 0보다 작으면 수익 없음 (또는 마이너스?) -> 보통 마이너스도 정산함.
-            // Share = NetLosing * (MyRate - ChildRate)
-            // User requested: "Losing 칸에 입력된 % 만큼 나누어 먹는거야" -> This likely refers to rates in DB.
-
             const rateDiffLosing = upper.losingRate - prevLosingRate;
             if (rateDiffLosing > 0) {
                 const profitLosing = netLosing * (rateDiffLosing / 100);
