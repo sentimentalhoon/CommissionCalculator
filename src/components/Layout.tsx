@@ -22,15 +22,18 @@
  */
 
 // React Router 관련 (React Router related)
-import { Outlet, Link, useLocation } from 'react-router-dom';
+import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 
 // 아이콘 라이브러리 (lucide-react)
 // Icon library (lucide-react)
-import { Home, Users, Calculator } from 'lucide-react';
+import { Home, Users, Calculator, LogOut } from 'lucide-react';
 
 // clsx: 조건부 CSS 클래스를 쉽게 조합하는 유틸리티
 // clsx: utility for easily combining conditional CSS classes
 import clsx from 'clsx';
+
+// 인증 컨텍스트 - 로그아웃 함수 사용 (Auth context - for logout function)
+import { useAuth } from '../contexts/AuthContext';
 
 /**
  * Layout 컴포넌트 - 메인 레이아웃
@@ -40,6 +43,22 @@ export default function Layout() {
     // useLocation: 현재 URL 정보를 가져옵니다 (어떤 탭이 활성화인지 확인용)
     // useLocation: gets current URL info (to check which tab is active)
     const location = useLocation();
+
+    // useNavigate: 프로그래밍 방식으로 페이지 이동 (for programmatic navigation)
+    const navigate = useNavigate();
+
+    // useAuth: 인증 컨텍스트에서 logout 함수 가져오기 (get logout from auth context)
+    const { logout } = useAuth()!;
+
+    // 로그아웃 핸들러 (Logout handler)
+    const handleLogout = async () => {
+        try {
+            await logout();
+            navigate('/login'); // 로그아웃 후 로그인 페이지로 이동
+        } catch (error) {
+            console.error('로그아웃 실패:', error);
+        }
+    };
 
     // 네비게이션 아이템 정의 (하단 탭 메뉴)
     // Navigation items definition (bottom tab menu)
@@ -58,12 +77,21 @@ export default function Layout() {
             <div className="w-full h-full max-w-[800px] bg-slate-50 text-slate-900 flex flex-col shadow-2xl relative">
 
                 {/* ===== 헤더 영역 (Header Area) ===== */}
-                <header className="bg-white border-b border-slate-200 px-4 py-3 sticky top-0 z-10 safe-area-top">
+                <header className="bg-white border-b border-slate-200 px-4 py-3 sticky top-0 z-10 safe-area-top flex justify-between items-center">
                     {/* 앱 제목 - 그라데이션 텍스트 효과 */}
                     {/* App title - gradient text effect */}
                     <h1 className="text-xl font-bold bg-gradient-to-r from-primary-600 to-primary-400 bg-clip-text text-transparent">
                         수수료 정산 시스템
                     </h1>
+
+                    {/* 로그아웃 버튼 (Logout button) */}
+                    <button
+                        onClick={handleLogout}
+                        className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                        title="로그아웃"
+                    >
+                        <LogOut size={20} />
+                    </button>
                 </header>
 
                 {/* ===== 메인 콘텐츠 영역 (Main Content Area) ===== */}
