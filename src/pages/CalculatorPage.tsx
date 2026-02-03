@@ -33,7 +33,7 @@ import { calculateBatchCommission } from '../services/calculator';
 import type { BatchInput } from '../services/calculator';
 
 // ===== 아이콘 (Icons) =====
-import { Calculator as CalcIcon, DollarSign, Check, Download, ChevronDown, ChevronRight } from 'lucide-react';
+import { Calculator as CalcIcon, DollarSign, Check, Download, ChevronDown, ChevronRight, RotateCcw } from 'lucide-react';
 
 // ===== PDF 생성 라이브러리 (PDF generation libraries) =====
 import jsPDF from 'jspdf';
@@ -597,10 +597,23 @@ export default function CalculatorPage() {
                 })()}
 
                 {targetMembers.length > 0 && (
-                    <div className="p-4 border-t border-slate-100 bg-slate-50">
+                    <div className="p-4 border-t border-slate-100 bg-slate-50 flex gap-3">
+                        <button
+                            onClick={() => {
+                                if (window.confirm('모든 입력값이 0으로 초기화됩니다. 계속하시겠습니까?')) {
+                                    setInputs({});
+                                    setResults(null);
+                                    alert('초기화되었습니다.');
+                                }
+                            }}
+                            className="flex-1 bg-white text-slate-600 font-bold py-4 rounded-xl border border-slate-200 shadow-sm hover:bg-slate-50 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+                        >
+                            <RotateCcw size={20} />
+                            초기화
+                        </button>
                         <button
                             onClick={handleCalculate}
-                            className="w-full bg-slate-900 text-white font-bold py-4 rounded-xl shadow-lg shadow-slate-900/20 active:scale-[0.98] transition-all"
+                            className="flex-[2] bg-slate-900 text-white font-bold py-4 rounded-xl shadow-lg shadow-slate-900/20 active:scale-[0.98] transition-all"
                         >
                             정산 결과 계산하기
                         </button>
