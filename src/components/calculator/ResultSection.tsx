@@ -129,7 +129,7 @@ export function ResultSection({ results, targetMembers, onDownloadPDF }: ResultS
                                                 <div className="text-center">
                                                     <details className="group inline-block text-left w-full">
                                                         <summary className="text-[10px] cursor-pointer text-slate-300 hover:text-blue-500 list-none text-center">▼</summary>
-                                                        <div className="text-[10px] text-left text-slate-500 bg-slate-50 p-2 rounded mt-1 whitespace-pre-wrap leading-relaxed border border-slate-100 break-all absolute left-4 right-4 z-10 mx-auto max-w-sm">
+                                                        <div className="text-[10px] text-left text-slate-500 bg-slate-50 p-2 rounded mt-1 whitespace-pre-wrap leading-relaxed border border-slate-100 break-all">
                                                             {r.casinoBreakdown}
                                                         </div>
                                                     </details>
@@ -145,7 +145,7 @@ export function ResultSection({ results, targetMembers, onDownloadPDF }: ResultS
                                                 <div className="text-center">
                                                     <details className="group inline-block text-left w-full">
                                                         <summary className="text-[10px] cursor-pointer text-slate-300 hover:text-purple-500 list-none text-center">▼</summary>
-                                                        <div className="text-[10px] text-left text-slate-500 bg-slate-50 p-2 rounded mt-1 whitespace-pre-wrap leading-relaxed border border-slate-100 break-all absolute left-4 right-4 z-10 mx-auto max-w-sm">
+                                                        <div className="text-[10px] text-left text-slate-500 bg-slate-50 p-2 rounded mt-1 whitespace-pre-wrap leading-relaxed border border-slate-100 break-all">
                                                             {r.slotBreakdown}
                                                         </div>
                                                     </details>
@@ -161,7 +161,7 @@ export function ResultSection({ results, targetMembers, onDownloadPDF }: ResultS
                                                 <div className="text-center">
                                                     <details className="group inline-block text-left w-full">
                                                         <summary className="text-[10px] cursor-pointer text-slate-300 hover:text-rose-500 list-none text-center">▼</summary>
-                                                        <div className="text-[10px] text-left text-slate-500 bg-slate-50 p-2 rounded mt-1 whitespace-pre-wrap leading-relaxed border border-slate-100 break-all absolute left-4 right-4 z-10 mx-auto max-w-sm">
+                                                        <div className="text-[10px] text-left text-slate-500 bg-slate-50 p-2 rounded mt-1 whitespace-pre-wrap leading-relaxed border border-slate-100 break-all">
                                                             {r.losingBreakdown}
                                                         </div>
                                                     </details>
