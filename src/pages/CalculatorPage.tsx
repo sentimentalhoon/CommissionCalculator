@@ -757,15 +757,7 @@ export default function CalculatorPage() {
                                                     <div className="p-2 flex flex-col gap-1">
                                                         <div className="text-[10px] font-bold text-blue-400 uppercase text-center">Casino</div>
                                                         <div className="text-center font-bold text-slate-700">{Math.floor(r.casino).toLocaleString()}</div>
-                                                        {r.casinoBreakdown && (
-                                                            <details className="mt-1">
-                                                                <summary className="text-[10px] text-center cursor-pointer text-slate-300 hover:text-blue-500 select-none list-none">▼ 상세</summary>
-                                                                <div className="text-[10px] text-left text-slate-500 bg-slate-50 p-2 rounded mt-2 whitespace-pre-wrap leading-relaxed shadow-inner border border-slate-100 absolute left-4 right-4 z-10 mx-auto max-w-sm">
-                                                                    {r.casinoBreakdown}
-                                                                </div>
-                                                                {/* Overlay for mobile tooltip behavior? No, simple flow is safer. Changing to inline block. */}
-                                                            </details>
-                                                        )}
+
                                                         {/* Re-implement details for cleaner flow */}
                                                         {r.casinoBreakdown && (
                                                             <div className="text-center">
