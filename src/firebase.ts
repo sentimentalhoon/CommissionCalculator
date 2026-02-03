@@ -35,19 +35,19 @@ import { getFirestore } from "firebase/firestore"; // 데이터베이스 서비�
  * - measurementId: Google Analytics용 ID (ID for Google Analytics)
  * 
  * ⚠️ 보안 참고 (Security Note):
- * 이 키들은 클라이언트에 노출되어도 괜찮습니다.
- * These keys are safe to expose on the client side.
- * 실제 보안은 Firebase Security Rules에서 처리합니다.
- * Real security is handled by Firebase Security Rules.
+ * 환경변수는 .env.local 파일에 저장됩니다 (git에서 제외됨)
+ * Environment variables are stored in .env.local (excluded from git)
+ * 새 환경 설정 시 .env.example를 참고하세요
+ * Refer to .env.example when setting up a new environment
  */
 const firebaseConfig = {
-    apiKey: "AIzaSyCQ_czv1Zjl77Sb-MhWt_aKo3UrwoCM_94",
-    authDomain: "commissioncalculator-46c7e.firebaseapp.com",
-    projectId: "commissioncalculator-46c7e",
-    storageBucket: "commissioncalculator-46c7e.firebasestorage.app",
-    messagingSenderId: "615774860880",
-    appId: "1:615774860880:web:7afc8b0353864b7072c355",
-    measurementId: "G-8FHM9GGN48"
+    apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+    authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+    projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+    storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+    messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+    appId: import.meta.env.VITE_FIREBASE_APP_ID,
+    measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
 };
 
 // Firebase 앱 초기화 - 모든 Firebase 서비스를 사용하기 전에 필수!
