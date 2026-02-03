@@ -192,6 +192,11 @@ export default function CalculatorPage() {
     const handleCalculate = async () => {
         setIsCalculating(true);
         try {
+            // ⭐ 계산 직전에 최신 유저 정보 다시 가져오기 (Refresh users data before calculation)
+            // 대시보드에서 수정된 내용이 반영되지 않는 문제 해결
+            const freshUsers = await db.users.toArray();
+            setUsers(freshUsers);
+
             const batchInputs: BatchInput[] = [];
 
             // 입력값이 있는 회원들만 처리
@@ -209,8 +214,8 @@ export default function CalculatorPage() {
                 }
             });
 
-            // 계산 실행 (Execute Calculation)
-            const calcResults = await calculateBatchCommission(batchInputs, users);
+            // 계산 실행 (Execute Calculation with FRESH users)
+            const calcResults = await calculateBatchCommission(batchInputs, freshUsers);
             setResults(calcResults);
 
             // 자동 저장 (Firestore 저장 로직은 별도 버튼 또는 이 시점에 수행)
