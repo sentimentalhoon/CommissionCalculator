@@ -239,10 +239,9 @@ export default function UsersPage() {
                     _sortKey: typeof data.id === 'number' ? data.id : 0
                 } as any);
             });
-            // Client-side sort by ID (Input Order)
-            // Migrated IDs are small numbers (1, 2...), New IDs are timestamps (huge numbers)
-            // This maintains chronological order: Migrated -> New
-            usersData.sort((a: any, b: any) => (a.id || 0) - (b.id || 0));
+            // Client-side sort by ID using numeric _sortKey
+            // _sortKey is either the migrated numeric ID or the timestamp for new users
+            usersData.sort((a: any, b: any) => (a._sortKey || 0) - (b._sortKey || 0));
             
             setUsers(usersData);
         });
