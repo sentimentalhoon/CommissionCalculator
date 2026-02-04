@@ -23,16 +23,13 @@ export const userService = {
                 ...data,
                 id: doc.id, // ID is string in Firestore
                 // We trust the numeric ID was saved in the 'id' field for sorting
-                // If 'id' field in data matches document ID string, we might need a numeric field.
-                // But our logic saves numeric ID in 'id' field.
-                // Wait, types: User.id is number? But doc.id is string.
-                // Let's coerce for sorting.
-                _sortId: typeof data.id === 'number' ? data.id : 0, 
+                // New users have createdAt, migrated users have numeric id in data
+                _sortId: data.createdAt || (typeof data.id === 'number' ? data.id : 0), 
                 parentId: data.parentId ? String(data.parentId) : null
             } as User & { _sortId: number };
         });
         
-        // Client-side sort by ID
+        // Client-side sort by ID/Time
         return users.sort((a, b) => a._sortId - b._sortId);
     },
 

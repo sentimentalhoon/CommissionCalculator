@@ -240,12 +240,11 @@ export default function UsersPage() {
                     ...data,
                     id: doc.id,
                     parentId: data.parentId ? String(data.parentId) : null,
-                    // Ensure numeric sort key exists (fallback to 0 or created time logic if needed)
-                    _sortKey: typeof data.id === 'number' ? data.id : 0
+                    // Ensure numeric sort key exists: createdAt (new) > numeric id (migrated) > 0 (fallback)
+                    _sortKey: data.createdAt || (typeof data.id === 'number' ? data.id : 0)
                 } as any);
             });
-            // Client-side sort by ID using numeric _sortKey
-            // _sortKey is either the migrated numeric ID or the timestamp for new users
+            // Client-side sort by ID/Time
             usersData.sort((a: any, b: any) => (a._sortKey || 0) - (b._sortKey || 0));
             
             setUsers(usersData);
