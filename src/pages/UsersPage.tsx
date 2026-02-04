@@ -225,7 +225,7 @@ export default function UsersPage() {
     const [users, setUsers] = useState<User[]>([]);
 
     useEffect(() => {
-        const q = query(collection(firestoreDb, "users"), orderBy('name'));
+        const q = query(collection(firestoreDb, "users"), orderBy('id'));
 
         const unsubscribe = onSnapshot(q, (querySnapshot) => {
             const usersData: User[] = [];

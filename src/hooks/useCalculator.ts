@@ -119,7 +119,7 @@ export function useCalculator() {
             const findChildren = (parentId: string, depth: number) => {
                 const pid = String(parentId).trim();
                 const children = childrenMap.get(pid) || [];
-                children.sort((a, b) => a.name.localeCompare(b.name));
+                // children.sort((a, b) => a.name.localeCompare(b.name)); // Removed to respect input order (id)
 
                 children.forEach(child => {
                     result.push({ ...child, depth });

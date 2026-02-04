@@ -16,7 +16,7 @@ const COLLECTION_NAME = 'users';
 export const userService = {
     // 모든 회원 가져오기
     getAllUsers: async (): Promise<User[]> => {
-        const q = query(collection(firestore, COLLECTION_NAME), orderBy('name'));
+        const q = query(collection(firestore, COLLECTION_NAME), orderBy('id'));
         const querySnapshot = await getDocs(q);
         return querySnapshot.docs.map(doc => {
             const data = doc.data();
