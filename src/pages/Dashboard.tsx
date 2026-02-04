@@ -19,17 +19,19 @@
 import { useState, useEffect } from 'react';
 
 // Firebase Firestore (클라우드 데이터베이스)
+// Firebase Firestore (클라우드 데이터베이스)
 import { db as firestoreDb } from '../firebase';
-import { collection, onSnapshot, query, orderBy, limit } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, limit, deleteDoc, doc } from 'firebase/firestore';
 
 // 타입 정의 (Type definitions)
 import type { CalculationLog } from '../db';
+import { useAuth } from '../contexts/AuthContext'; // Import useAuth
 
 // 날짜 포맷 라이브러리 (Date formatting library)
 import { format } from 'date-fns';
 
 // 아이콘 (Icons)
-import { TrendingUp, Users, History, RefreshCw } from 'lucide-react';
+import { TrendingUp, Users, History, RefreshCw, Trash2 } from 'lucide-react';
 
 // 라우팅 (Routing) - 불러오기 기능용
 import { useNavigate } from 'react-router-dom';
@@ -37,11 +39,26 @@ import { useNavigate } from 'react-router-dom';
 export default function Dashboard() {
     const [userCount, setUserCount] = useState(0);
     // docId를 포함하는 확장 타입 (Extended type including docId for restore)
+    // docId를 포함하는 확장 타입 (Extended type including docId for restore)
     const [logs, setLogs] = useState<(CalculationLog & { docId: string })[]>([]);
     const [logCount, setLogCount] = useState(0);
 
+    const { currentUser, isAdmin } = useAuth()!;
+
     // 불러오기 기능용 navigate (Navigate for restore feature)
     const navigate = useNavigate();
+
+    const handleDeleteLog = async (logId: string) => {
+        if (!window.confirm("정말 이 정산 기록을 삭제하시겠습니까?")) return;
+        
+        try {
+            await deleteDoc(doc(firestoreDb, "calculation_logs", logId));
+            // Snapshot listener will update the UI automatically
+        } catch (error) {
+            console.error("Error deleting log:", error);
+            alert("삭제 중 오류가 발생했습니다.");
+        }
+    };
 
     // Fetch users count from Firestore
     useEffect(() => {
@@ -122,7 +139,7 @@ export default function Dashboard() {
                 ) : (
                     <div className="space-y-3">
                         {logs.map(log => (
-                            <div key={log.id} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                            <div key={log.id} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm relative group">
                                 <div className="flex justify-between items-start mb-2">
                                     <div className="text-sm font-bold text-slate-800 flex items-center gap-2">
                                         {format(log.date, 'MMM d, yyyy h:mm a')}
@@ -143,6 +160,17 @@ export default function Dashboard() {
                                             >
                                                 <RefreshCw size={12} />
                                                 불러오기
+                                            </button>
+                                        )}
+                                        {/* 삭제 버튼 (관리자 또는 본인) */}
+                                        {(isAdmin || currentUser?.uid === log.authorId) && (
+                                            <button
+                                                onClick={() => handleDeleteLog(log.docId)}
+                                                className="flex items-center gap-1 text-xs text-rose-500 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 px-2 py-1 rounded transition-colors"
+                                                title="이 기록 삭제하기"
+                                            >
+                                                <Trash2 size={12} />
+                                                삭제
                                             </button>
                                         )}
                                         <div className="text-primary-600 font-bold bg-primary-50 px-2 py-0.5 rounded text-sm">
