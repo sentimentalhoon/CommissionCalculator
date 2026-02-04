@@ -83,6 +83,7 @@ export function useCalculator() {
                         const data = docSnap.data();
                         if (data.selectedMasterId) setSelectedMasterId(data.selectedMasterId.toString());
                         if (data.inputs) setInputs(data.inputs);
+                        if (data.results) setResults(data.results);
                     }
                 } catch (error) {
                     console.error("Error loading log:", error);
