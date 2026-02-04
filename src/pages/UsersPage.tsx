@@ -13,7 +13,7 @@ import clsx from 'clsx';
 import { LEVELS } from '../constants/levels';
 import type { User } from '../db';
 import { db as firestoreDb } from '../firebase';
-import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
+import { collection, onSnapshot, query } from 'firebase/firestore';
 
 interface UserNode extends User {
     children: UserNode[];
@@ -225,7 +225,7 @@ export default function UsersPage() {
     const [users, setUsers] = useState<User[]>([]);
 
     useEffect(() => {
-        const q = query(collection(firestoreDb, "users"), orderBy('id'));
+        const q = query(collection(firestoreDb, "users")); // Remove orderBy logic to prevent filtering
 
         const unsubscribe = onSnapshot(q, (querySnapshot) => {
             const usersData: User[] = [];
@@ -234,9 +234,16 @@ export default function UsersPage() {
                 usersData.push({
                     ...data,
                     id: doc.id,
-                    parentId: data.parentId ? String(data.parentId) : null
-                } as User);
+                    parentId: data.parentId ? String(data.parentId) : null,
+                    // Ensure numeric sort key exists (fallback to 0 or created time logic if needed)
+                    _sortKey: typeof data.id === 'number' ? data.id : 0
+                } as any);
             });
+            // Client-side sort by ID (Input Order)
+            // Migrated IDs are small numbers (1, 2...), New IDs are timestamps (huge numbers)
+            // This maintains chronological order: Migrated -> New
+            usersData.sort((a: any, b: any) => (a.id || 0) - (b.id || 0));
+            
             setUsers(usersData);
         });
         return () => unsubscribe();

@@ -5,8 +5,7 @@ import {
     deleteDoc,
     doc,
     getDocs,
-    query,
-    orderBy
+    query
 } from 'firebase/firestore';
 import { db as firestore } from '../firebase';
 import type { User } from '../db';
@@ -16,16 +15,25 @@ const COLLECTION_NAME = 'users';
 export const userService = {
     // 모든 회원 가져오기
     getAllUsers: async (): Promise<User[]> => {
-        const q = query(collection(firestore, COLLECTION_NAME), orderBy('id'));
+        const q = query(collection(firestore, COLLECTION_NAME));
         const querySnapshot = await getDocs(q);
-        return querySnapshot.docs.map(doc => {
+        const users = querySnapshot.docs.map(doc => {
             const data = doc.data();
             return {
                 ...data,
-                id: doc.id,
+                id: doc.id, // ID is string in Firestore
+                // We trust the numeric ID was saved in the 'id' field for sorting
+                // If 'id' field in data matches document ID string, we might need a numeric field.
+                // But our logic saves numeric ID in 'id' field.
+                // Wait, types: User.id is number? But doc.id is string.
+                // Let's coerce for sorting.
+                _sortId: typeof data.id === 'number' ? data.id : 0, 
                 parentId: data.parentId ? String(data.parentId) : null
-            } as User;
+            } as User & { _sortId: number };
         });
+        
+        // Client-side sort by ID
+        return users.sort((a, b) => a._sortId - b._sortId);
     },
 
     // 회원 추가
