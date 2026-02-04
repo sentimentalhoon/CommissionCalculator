@@ -74,7 +74,9 @@ export default function Dashboard() {
                     losingAmount: data.losingAmount || 0,
                     results: data.results || [],
                     selectedMasterId: data.selectedMasterId, // String ID
-                    inputs: data.inputs // String keys
+                    inputs: data.inputs, // String keys
+                    authorId: data.authorId,
+                    authorName: data.authorName
                 } as CalculationLog & { docId: string });
             });
             setLogs(logsData);
@@ -122,8 +124,13 @@ export default function Dashboard() {
                         {logs.map(log => (
                             <div key={log.id} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
                                 <div className="flex justify-between items-start mb-2">
-                                    <div className="text-sm font-bold text-slate-800">
+                                    <div className="text-sm font-bold text-slate-800 flex items-center gap-2">
                                         {format(log.date, 'MMM d, yyyy h:mm a')}
+                                        {log.authorName && (
+                                            <span className="text-[10px] font-normal text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded-full">
+                                                by {log.authorName}
+                                            </span>
+                                        )}
                                     </div>
                                     <div className="flex items-center gap-2">
                                         {/* 불러오기 버튼 - inputs이 있는 경우에만 표시 */}

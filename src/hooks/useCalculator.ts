@@ -185,7 +185,10 @@ export function useCalculator() {
                 losingAmount: totalLosing,
                 results: calcResults,
                 selectedMasterId: selectedMasterId,
-                inputs: inputs
+                inputs: inputs,
+                // Add author info
+                authorId: currentUser?.uid,
+                authorName: currentUser?.displayName || currentUser?.email?.split('@')[0] || 'Admin'
             };
 
             const docRef = doc(firestoreDb, 'calculation_logs', today.getTime().toString());

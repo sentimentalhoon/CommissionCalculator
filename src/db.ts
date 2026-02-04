@@ -111,6 +111,10 @@ export interface CalculationLog {
     // 회원별 개별 입력값 스냅샷 { userId: { c: '카지노', s: '슬롯', l: '루징' } }
     // Key type changed to string (userId)
     inputs?: Record<string, { c: string, s: string, l: string }>;
+
+    // 작성자 정보 (Author Info)
+    authorId?: string;   // 정산을 수행한 관리자 ID
+    authorName?: string; // 정산을 수행한 관리자 이름
 }
 
 /**
