@@ -76,6 +76,10 @@ export interface User {
     // 메모 색상 (선택사항: yellow, blue, green, rose, purple)
     // Memo color
     memoColor?: string;
+
+    // 생성일시 (타임스탬프)
+    // Creation timestamp
+    createdAt?: number;
 }
 
 /**

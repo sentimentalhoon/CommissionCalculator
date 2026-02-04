@@ -111,6 +111,11 @@ const UserTreeItem = ({
                                 <div className="text-[10px] font-bold text-slate-500 bg-slate-50 px-1.5 py-0.5 rounded-md inline-block">
                                     {node.level || 'Unknown'}
                                 </div>
+                                {node.createdAt && (
+                                    <span className="text-[10px] text-slate-400 font-medium ml-1.5 align-middle">
+                                        {new Date(node.createdAt).toLocaleString()}
+                                    </span>
+                                )}
                                 {node.memberName && (
                                     <div className="text-[10px] text-slate-400 font-medium -mt-0.5">
                                         {node.memberName}

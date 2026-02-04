@@ -86,6 +86,8 @@ export default function UserForm({ onClose, editUser, preselectedParentId, restr
             loginId: loginId ?? null,
             memberName: memberName ?? null,
             parentId: parentId ?? null,
+            // Add creation time for new users
+            ...(!editUser ? { createdAt: Date.now() } : {})
         };
 
         // Final safety check: remove any remaining undefined keys
